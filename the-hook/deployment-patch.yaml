@@ -1,0 +1,29 @@
+
+spec:
+  template:
+    metadata:
+      labels:
+        {{ .PatchedLabelName }}: "true"
+    spec:
+      containers:
+      - name: {{ .ContainerName }}
+        image: {{ .Image }}
+        command:
+        args:
+        livenessProbe:
+        readinessProbe:
+        {{ if .Mounts }}
+        volumeMounts:
+          {{ range $i, $mount := .Mounts }}
+          - mountPath: {{ $mount.MountPath }}
+            name: "patch-mount-{{ $i }}"
+          {{ end }}
+        {{ end }}
+      {{ if .Mounts }}
+      volumes:
+        {{ range $i, $mount := .Mounts }}
+        - name: "patch-mount-{{ $i }}"
+          hostPath:
+            path: {{ $mount.HostPath }}
+        {{ end }}
+      {{ end }}
