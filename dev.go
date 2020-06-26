@@ -30,7 +30,7 @@ const (
 	defaultWaitTimeout       = "30s"
 	conditionContainersReady = "condition=ContainersReady"
 	defaultPatchedLabel      = "dev-mode-patched"
-	patchImage               = "gograpple-patch:latest"
+	defaultPatchImage        = "gograpple-patch:latest"
 )
 
 type Mount struct {
@@ -50,7 +50,7 @@ func newPatchValues(container string, mounts []Mount) *patchValues {
 		PatchedLabelName: defaultPatchedLabel,
 		ContainerName:    container,
 		Mounts:           mounts,
-		Image:            patchImage,
+		Image:            defaultPatchImage,
 	}
 }
 
@@ -481,7 +481,7 @@ func buildPatchImage(l *logrus.Entry, image, tag, path string) (string, error) {
 	cmd := []string{
 		"docker", "build", ".",
 		"--build-arg", fmt.Sprintf("IMAGE=%v:%v", image, tag),
-		"-t", image,
+		"-t", defaultPatchImage,
 	}
 	return squadron.Command(l, cmd...).Cwd(path).Run()
 }
