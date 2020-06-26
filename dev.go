@@ -30,6 +30,7 @@ const (
 	defaultWaitTimeout       = "30s"
 	conditionContainersReady = "condition=ContainersReady"
 	defaultPatchedLabel      = "dev-mode-patched"
+	patchImage               = "gograpple-patch:latest"
 )
 
 type Mount struct {
@@ -49,7 +50,7 @@ func newPatchValues(container string, mounts []Mount) *patchValues {
 		PatchedLabelName: defaultPatchedLabel,
 		ContainerName:    container,
 		Mounts:           mounts,
-		Image:            "dummy:latest",
+		Image:            patchImage,
 	}
 }
 
@@ -242,21 +243,22 @@ func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag str
 		return out, err
 	}
 
-	l.Infof("extracting dummy files")
-	if err := bindata.RestoreAssets(os.TempDir(), "the-hook"); err != nil {
+	l.Infof("extracting patch files")
+	const patchFolder = "the-hook"
+	if err := bindata.RestoreAssets(os.TempDir(), patchFolder); err != nil {
 		return "", err
 	}
-	dummyPath := path.Join(os.TempDir(), "dummy")
+	theHookPath := path.Join(os.TempDir(), patchFolder)
 
-	l.Infof("building dummy image with %v:%v", image, tag)
-	_, err = buildDummy(l, image, tag, dummyPath)
+	l.Infof("building patch image with %v:%v", image, tag)
+	_, err = buildPatchImage(l, image, tag, theHookPath)
 	if err != nil {
 		return "", err
 	}
 
 	l.Infof("rendering deployment patch template")
 	patch, err := renderTemplate(
-		path.Join(dummyPath, devDeploymentPatchFile),
+		path.Join(theHookPath, devDeploymentPatchFile),
 		newPatchValues(container, mounts),
 	)
 	if err != nil {
@@ -475,11 +477,11 @@ func stringInSlice(a string, list []string) bool {
 	return false
 }
 
-func buildDummy(l *logrus.Entry, image, tag, path string) (string, error) {
+func buildPatchImage(l *logrus.Entry, image, tag, path string) (string, error) {
 	cmd := []string{
 		"docker", "build", ".",
 		"--build-arg", fmt.Sprintf("IMAGE=%v:%v", image, tag),
-		"-t", "dummy:latest",
+		"-t", image,
 	}
 	return squadron.Command(l, cmd...).Cwd(path).Run()
 }
