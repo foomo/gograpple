@@ -25,6 +25,7 @@ func init() {
 	devDelveCmd.Flags().Var(flagArgs, "args", "go file args")
 	devDelveCmd.Flags().Var(flagListen, "listen", "delve host:port to listen on")
 	devDelveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
+	devDelveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
 	rootCmd.AddCommand(versionCmd, devPatchCmd, devShellCmd, devDelveCmd)
 }
 
@@ -44,6 +45,7 @@ var (
 	flagContinue  bool
 	flagListen    = newHostPort("127.0.0.1", 0)
 	flagVscode    bool
+	flagJSONLog   bool
 )
 
 var (
@@ -54,7 +56,7 @@ var (
 	rootCmd = &cobra.Command{
 		Use: "gograpple",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			l = newLogger(flagVerbose)
+			l = newLogger(flagVerbose, flagJSONLog)
 			var err error
 			err = gograpple.ValidatePath(".", &flagDir)
 			if err != nil {
@@ -150,8 +152,13 @@ func Execute() {
 
 }
 
-func newLogger(verbose bool) *logrus.Entry {
+func newLogger(verbose, jsonLog bool) *logrus.Entry {
 	logger := logrus.New()
+	if jsonLog {
+		logger.SetFormatter(&logrus.JSONFormatter{
+			DisableTimestamp: true,
+		})
+	}
 	if verbose {
 		logger.SetLevel(logrus.TraceLevel)
 	}

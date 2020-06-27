@@ -62,7 +62,7 @@ type KubeResource struct {
 }
 
 func newKubeResource(name string) *KubeResource {
-	return &KubeResource{name, newLogger(false)}
+	return &KubeResource{name, newLogger(false, false)}
 }
 
 func (*KubeResource) Type() string {
