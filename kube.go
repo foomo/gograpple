@@ -238,3 +238,12 @@ func parseResources(out, delimiter, prefix string) ([]string, error) {
 	}
 	return res, nil
 }
+
+
+func RestartDeployment(l *logrus.Entry, deployment, namespace string) *squadron.Cmd {
+	cmd := []string{
+		"kubectl", "-n", namespace,
+		"rollout", "restart", fmt.Sprintf("deployment/%v", deployment),
+	}
+	return squadron.Command(l, cmd...)
+}
