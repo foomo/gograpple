@@ -11,7 +11,7 @@ import (
 	v1 "k8s.io/api/apps/v1"
 )
 
-func rollbackDeployment(l *logrus.Entry, deployment, namespace string) *squadron.Cmd {
+func RollbackDeployment(l *logrus.Entry, deployment, namespace string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", namespace,
 		"rollout", "undo", fmt.Sprintf("deployment/%v", deployment),
@@ -19,7 +19,7 @@ func rollbackDeployment(l *logrus.Entry, deployment, namespace string) *squadron
 	return squadron.Command(l, cmd...)
 }
 
-func waitForRollout(l *logrus.Entry, deployment, namespace, timeout string) *squadron.Cmd {
+func WaitForRollout(l *logrus.Entry, deployment, namespace, timeout string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", namespace,
 		"rollout", "status", fmt.Sprintf("deployment/%v", deployment),
@@ -54,7 +54,7 @@ func GetMostRecentPodBySelectors(l *logrus.Entry, selectors map[string]string, n
 	return "", fmt.Errorf("no pods found")
 }
 
-func waitForPodState(l *logrus.Entry, namepsace, pod, condition, timeout string) *squadron.Cmd {
+func WaitForPodState(l *logrus.Entry, namepsace, pod, condition, timeout string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", namepsace,
 		"wait", fmt.Sprintf("pod/%v", pod),
@@ -64,7 +64,7 @@ func waitForPodState(l *logrus.Entry, namepsace, pod, condition, timeout string)
 	return squadron.Command(l, cmd...)
 }
 
-func execShell(l *logrus.Entry, resource, path, namespace string) *squadron.Cmd {
+func ExecShell(l *logrus.Entry, resource, path, namespace string) *squadron.Cmd {
 	cmdArgs := []string{
 		"kubectl", "-n", namespace,
 		"exec", "-it", resource,
@@ -75,7 +75,7 @@ func execShell(l *logrus.Entry, resource, path, namespace string) *squadron.Cmd 
 	return squadron.Command(l, cmdArgs...).Stdin(os.Stdin).Stdout(os.Stdout).Stderr(os.Stdout)
 }
 
-func patchDeployment(l *logrus.Entry, patch, deployment, namespace string) *squadron.Cmd {
+func PatchDeployment(l *logrus.Entry, patch, deployment, namespace string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", namespace,
 		"patch", "deployment", deployment,
@@ -84,7 +84,7 @@ func patchDeployment(l *logrus.Entry, patch, deployment, namespace string) *squa
 	return squadron.Command(l, cmd...)
 }
 
-func copyToPod(l *logrus.Entry, pod, container, namespace, source, destination string) *squadron.Cmd {
+func CopyToPod(l *logrus.Entry, pod, container, namespace, source, destination string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", namespace,
 		"cp", source, fmt.Sprintf("%v:%v", pod, destination),
@@ -93,7 +93,7 @@ func copyToPod(l *logrus.Entry, pod, container, namespace, source, destination s
 	return squadron.Command(l, cmd...)
 }
 
-func execPod(l *logrus.Entry, pod, container, namespace string, cmd []string) *squadron.Cmd {
+func ExecPod(l *logrus.Entry, pod, container, namespace string, cmd []string) *squadron.Cmd {
 	c := []string{
 		"kubectl", "-n", namespace,
 		"exec", pod,
@@ -104,7 +104,7 @@ func execPod(l *logrus.Entry, pod, container, namespace string, cmd []string) *s
 	return squadron.Command(l, c...)
 }
 
-func exposePod(l *logrus.Entry, namespace, pod string, host string, port int) *squadron.Cmd {
+func ExposePod(l *logrus.Entry, namespace, pod string, host string, port int) *squadron.Cmd {
 	if host == "127.0.0.1" {
 		host = ""
 	}
@@ -119,7 +119,7 @@ func exposePod(l *logrus.Entry, namespace, pod string, host string, port int) *s
 	return squadron.Command(l, cmd...)
 }
 
-func deleteService(l *logrus.Entry, deployment *v1.Deployment, service string) *squadron.Cmd {
+func DeleteService(l *logrus.Entry, deployment *v1.Deployment, service string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", deployment.Namespace,
 		"delete", "service", service,
@@ -144,7 +144,7 @@ func GetDeployment(l *logrus.Entry, namespace, deployment string) (*v1.Deploymen
 	return &d, nil
 }
 
-func getNamespaces(l *logrus.Entry) ([]string, error) {
+func GetNamespaces(l *logrus.Entry) ([]string, error) {
 	cmd := []string{
 		"kubectl",
 		"get", "namespace",
@@ -158,7 +158,7 @@ func getNamespaces(l *logrus.Entry) ([]string, error) {
 	return parseResources(out, "\n", "namespace/")
 }
 
-func getDeployments(l *logrus.Entry, namespace string) ([]string, error) {
+func GetDeployments(l *logrus.Entry, namespace string) ([]string, error) {
 	cmd := []string{
 		"kubectl", "-n", namespace,
 		"get", "deployment",
@@ -172,7 +172,7 @@ func getDeployments(l *logrus.Entry, namespace string) ([]string, error) {
 	return parseResources(out, "\n", "deployment.apps/")
 }
 
-func getPods(l *logrus.Entry, namespace string, selectors map[string]string) ([]string, error) {
+func GetPods(l *logrus.Entry, namespace string, selectors map[string]string) ([]string, error) {
 	var selector []string
 	for k, v := range selectors {
 		selector = append(selector, fmt.Sprintf("%v=%v", k, v))
@@ -191,7 +191,7 @@ func getPods(l *logrus.Entry, namespace string, selectors map[string]string) ([]
 	return parseResources(out, "\n", "pod/")
 }
 
-func getContainers(l *logrus.Entry, deployment *v1.Deployment) []string {
+func GetContainers(l *logrus.Entry, deployment *v1.Deployment) []string {
 	var containers []string
 	for _, c := range deployment.Spec.Template.Spec.Containers {
 		containers = append(containers, c.Name)
@@ -199,7 +199,7 @@ func getContainers(l *logrus.Entry, deployment *v1.Deployment) []string {
 	return containers
 }
 
-func getPodsByLabels(l *logrus.Entry, labels []string) ([]string, error) {
+func GetPodsByLabels(l *logrus.Entry, labels []string) ([]string, error) {
 	var selector []string
 	for k, v := range labels {
 		selector = append(selector, fmt.Sprintf("%v=%v", k, v))

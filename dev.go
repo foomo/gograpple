@@ -97,11 +97,11 @@ func DelveCleanup(l *logrus.Entry, deployment *v1.Deployment, pod, container str
 	}
 
 	l.Infof("removing delve service")
-	deleteService(l, deployment, pod).Run()
+	DeleteService(l, deployment, pod).Run()
 
 	l.Infof("cleaning up debug processes")
-	execPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", "dlv"}).Run()
-	execPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", deployment.Name}).Run()
+	ExecPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", "dlv"}).Run()
+	ExecPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", deployment.Name}).Run()
 	return "", nil
 }
 
@@ -125,7 +125,7 @@ func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input str
 
 	l.Infof("copying binary to pod %v", pod)
 	binDestination := fmt.Sprintf("/%v", deployment.Name)
-	_, err = copyToPod(l, pod, container, deployment.Namespace, binPath, binDestination).Run()
+	_, err = CopyToPod(l, pod, container, deployment.Namespace, binPath, binDestination).Run()
 	if err != nil {
 		return "", err
 	}
@@ -155,7 +155,7 @@ func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input str
 	signalCapture(l)
 
 	l.Infof("exposing deployment %v for delve", deployment.Name)
-	out, err := exposePod(l, deployment.Namespace, pod, host, port).Run()
+	out, err := ExposePod(l, deployment.Namespace, pod, host, port).Run()
 	if err != nil {
 		return out, err
 
@@ -182,7 +182,7 @@ func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input str
 		cmd = append(cmd, args...)
 	}
 
-	execPod(l, pod, container, deployment.Namespace, cmd).PostStart(
+	ExecPod(l, pod, container, deployment.Namespace, cmd).PostStart(
 		func() error {
 			client, errTryDelveServer := tryDelveServer(l, host, port, 5, 1*time.Second)
 			if errTryDelveServer != nil {
@@ -238,7 +238,7 @@ func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag str
 	}
 
 	l.Infof("waiting for deployment to get ready")
-	out, err := waitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
+	out, err := WaitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
 	if err != nil {
 		return out, err
 	}
@@ -266,7 +266,7 @@ func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag str
 	}
 
 	l.Infof("patching deployment for development")
-	out, err = patchDeployment(l, patch, deployment.Name, deployment.Namespace).Run()
+	out, err = PatchDeployment(l, patch, deployment.Name, deployment.Namespace).Run()
 	if err != nil {
 		return out, err
 	}
@@ -278,7 +278,7 @@ func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag str
 	}
 
 	l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
-	out, err = waitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
+	out, err = WaitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
 	if err != nil {
 		return out, err
 	}
@@ -298,13 +298,13 @@ func Rollback(l *logrus.Entry, deployment *v1.Deployment) (string, error) {
 	}
 
 	l.Infof("waiting for deployment to get ready")
-	out, err := waitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
+	out, err := WaitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
 	if err != nil {
 		return out, err
 	}
 
 	l.Infof("rolling back deployment %v", deployment.Name)
-	out, err = rollbackDeployment(l, deployment.Name, deployment.Namespace).Run()
+	out, err = RollbackDeployment(l, deployment.Name, deployment.Namespace).Run()
 	if err != nil {
 		return out, err
 	}
@@ -319,13 +319,13 @@ func Shell(l *logrus.Entry, deployment *v1.Deployment, pod string) (string, erro
 	}
 
 	l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
-	out, err := waitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
+	out, err := WaitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
 	if err != nil {
 		return out, err
 	}
 
 	l.Infof("running interactive shell for patched deployment %v", deployment.Name)
-	return execShell(l, fmt.Sprintf("pod/%v", pod), "/", deployment.Namespace).Run()
+	return ExecShell(l, fmt.Sprintf("pod/%v", pod), "/", deployment.Namespace).Run()
 }
 
 func FindFreePort(host string) (int, error) {
@@ -362,7 +362,7 @@ func validateResource(resourceType, resource, suffix string, available []string)
 }
 
 func ValidateNamespace(l *logrus.Entry, namespace string) error {
-	available, err := getNamespaces(l)
+	available, err := GetNamespaces(l)
 	if err != nil {
 		return err
 	}
@@ -370,7 +370,7 @@ func ValidateNamespace(l *logrus.Entry, namespace string) error {
 }
 
 func ValidateDeployment(l *logrus.Entry, namespace, deployment string) error {
-	available, err := getDeployments(l, namespace)
+	available, err := GetDeployments(l, namespace)
 	if err != nil {
 		return err
 	}
@@ -386,7 +386,7 @@ func ValidatePod(l *logrus.Entry, deployment *v1.Deployment, pod *string) error 
 		}
 		return nil
 	}
-	available, err := getPods(l, deployment.Namespace, deployment.Spec.Selector.MatchLabels)
+	available, err := GetPods(l, deployment.Namespace, deployment.Spec.Selector.MatchLabels)
 	if err != nil {
 		return err
 	}
@@ -397,7 +397,7 @@ func ValidateContainer(l *logrus.Entry, deployment *v1.Deployment, container *st
 	if *container == "" {
 		*container = deployment.Name
 	}
-	available := getContainers(l, deployment)
+	available := GetContainers(l, deployment)
 	return validateResource("container", *container, fmt.Sprintf("for deployment %q", deployment.Name), available)
 }
 
@@ -496,7 +496,7 @@ func debugBuild(l *logrus.Entry, input, goModDir, output string, env []string) (
 }
 
 func getArgsFromPod(l *logrus.Entry, namespace, pod, container string) ([]string, error) {
-	out, err := execPod(l, pod, container, namespace, []string{"cat", "/args.yaml"}).Run()
+	out, err := ExecPod(l, pod, container, namespace, []string{"cat", "/args.yaml"}).Run()
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +521,7 @@ func copyArgsToPod(l *logrus.Entry, deployment *v1.Deployment, pod, container st
 		return err
 	}
 	argsDestination := "/args.yaml"
-	_, err := copyToPod(l, pod, container, deployment.Namespace, argsSource, argsDestination).Run()
+	_, err := CopyToPod(l, pod, container, deployment.Namespace, argsSource, argsDestination).Run()
 	if err != nil {
 		return err
 	}
