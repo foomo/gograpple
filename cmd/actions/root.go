@@ -1,6 +1,8 @@
 package actions
 
 import (
+	"fmt"
+
 	"github.com/foomo/gograpple"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
@@ -13,20 +15,19 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagDir, "dir", "d", ".", "Specifies working directory")
 	rootCmd.PersistentFlags().StringVarP(&flagNamespace, "namespace", "n", "default", "namespace name")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Specifies should command output be displayed")
-
 	rootCmd.PersistentFlags().StringVarP(&flagPod, "pod", "p", "", "pod name (default most recent one)")
 	rootCmd.PersistentFlags().StringVarP(&flagContainer, "container", "c", "", "container name (default deployment name)")
-	devPatchCmd.Flags().StringVarP(&flagImage, "image", "i", "", "image to be used for patching (default deployment image)")
-	devPatchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
-	devPatchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
-	devDelveCmd.Flags().StringVar(&flagInput, "input", "", "go file input (default cwd)")
-	devDelveCmd.Flags().BoolVar(&flagCleanup, "cleanup", false, "cleanup delve debug session")
-	devDelveCmd.Flags().BoolVar(&flagContinue, "continue", false, "delve --continue option")
-	devDelveCmd.Flags().Var(flagArgs, "args", "go file args")
-	devDelveCmd.Flags().Var(flagListen, "listen", "delve host:port to listen on")
-	devDelveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
-	devDelveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
-	rootCmd.AddCommand(versionCmd, devPatchCmd, devShellCmd, devDelveCmd)
+	patchCmd.Flags().StringVarP(&flagImage, "image", "i", "", "image to be used for patching (default deployment image)")
+	patchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
+	patchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
+	delveCmd.Flags().StringVar(&flagInput, "input", "", "go file input (default cwd)")
+	delveCmd.Flags().BoolVar(&flagCleanup, "cleanup", false, "cleanup delve debug session")
+	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "delve --continue option")
+	delveCmd.Flags().Var(flagArgs, "args", "go file args")
+	delveCmd.Flags().Var(flagListen, "listen", "delve host:port to listen on")
+	delveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
+	delveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
+	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd)
 }
 
 var (
@@ -89,21 +90,24 @@ var (
 			return gograpple.ValidatePath(flagDir, &flagInput)
 		},
 	}
-	devPatchCmd = &cobra.Command{
+	patchCmd = &cobra.Command{
 		Use:   "patch [DEPLOYMENT] -c {CONTAINER} -n {NAMESPACE} -i {IMAGE} -t {TAG} -m {MOUNT}",
 		Short: "applies a development patch for a deployment",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if flagRollback {
+				_, err := rollback(l, flagNamespace, deployment)
+				return err
+			}
 			mounts, err := gograpple.ValidateMounts(flagDir, flagMounts)
 			if err != nil {
 				return err
 			}
-
-			_, err = patch(l, flagNamespace, deployment, flagPod, flagContainer, flagImage, flagTag, mounts, flagRollback)
+			_, err = patch(l, flagNamespace, deployment, flagPod, flagContainer, flagImage, flagTag, mounts)
 			return err
 		},
 	}
-	devShellCmd = &cobra.Command{
+	shellCmd = &cobra.Command{
 		Use:   "shell [DEPLOYMENT] -n {NAMESPACE} -c {CONTAINER}",
 		Short: "shell into the dev patched deployment",
 		Args:  cobra.MinimumNArgs(1),
@@ -114,7 +118,7 @@ var (
 			}
 		},
 	}
-	devDelveCmd = &cobra.Command{
+	delveCmd = &cobra.Command{
 		Use:   "delve [DEPLOYMENT] -input {INPUT} -n {NAMESPACE} -c {CONTAINER}",
 		Short: "start a headless delve debug server for .go input on a patched deployment",
 		Args:  cobra.MinimumNArgs(1),
@@ -127,18 +131,39 @@ var (
 	}
 )
 
-func patch(l *logrus.Entry, namespace string, deployment *v1.Deployment, pod, container, image, tag string, mounts []gograpple.Mount, rollback bool) (string, error) {
-	if rollback {
-		return gograpple.Rollback(l, deployment)
+func patch(l *logrus.Entry, namespace string, deployment *v1.Deployment, pod, container, image, tag string, mounts []gograpple.Mount) (string, error) {
+	if gograpple.DeploymentIsPatched(l, deployment) {
+		l.Warnf("deployment already patched, running rollback first")
+		out, err := gograpple.Rollback(l, deployment.Namespace, deployment.Name)
+		if err != nil {
+			return out, err
+		}
+		deployment, err = gograpple.GetDeployment(l, deployment.Namespace, deployment.Name)
+		if err != nil {
+			return "", err
+		}
 	}
 	return gograpple.Patch(l, deployment, container, image, tag, mounts)
 }
 
+func rollback(l *logrus.Entry, namespace string, deployment *v1.Deployment) (string, error) {
+	if !gograpple.DeploymentIsPatched(l, deployment) {
+		return "", fmt.Errorf("deployment not patched, stopping rollback")
+	}
+	return gograpple.Rollback(l, namespace, deployment.Name)
+}
+
 func shell(l *logrus.Entry, deployment *v1.Deployment, pod string) (string, error) {
+	if !gograpple.DeploymentIsPatched(l, deployment) {
+		return "", fmt.Errorf("deployment not patched, stopping shell")
+	}
 	return gograpple.Shell(l, deployment, pod)
 }
 
 func delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input string, args []string, host string, port int, cleanup, dlvContinue, vscode bool) (string, error) {
+	if !gograpple.DeploymentIsPatched(l, deployment) {
+		return "", fmt.Errorf("deployment not patched, stopping delve")
+	}
 	if cleanup {
 		return gograpple.DelveCleanup(l, deployment, pod, container)
 	}

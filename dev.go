@@ -91,26 +91,17 @@ func (la *launchArgs) toJson() (string, error) {
 }
 
 func DelveCleanup(l *logrus.Entry, deployment *v1.Deployment, pod, container string) (string, error) {
-	isPatched := deploymentIsPatched(l, deployment)
-	if !isPatched {
-		return "", fmt.Errorf("deployment not patched, stopping debug")
-	}
-
 	l.Infof("removing delve service")
 	DeleteService(l, deployment, pod).Run()
 
 	l.Infof("cleaning up debug processes")
 	ExecPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", "dlv"}).Run()
 	ExecPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", deployment.Name}).Run()
+
 	return "", nil
 }
 
 func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input string, args []string, delveContinue bool, host string, port int, vscode bool) (string, error) {
-	isPatched := deploymentIsPatched(l, deployment)
-	if !isPatched {
-		return "", fmt.Errorf("deployment not patched, stopping debug")
-	}
-
 	goModDir, err := findGoProjectRoot(input)
 	if err != nil {
 		return "", fmt.Errorf("couldnt find go.mod dir for input %q", input)
@@ -228,14 +219,6 @@ func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input str
 }
 
 func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag string, mounts []Mount) (string, error) {
-	isPatched := deploymentIsPatched(l, deployment)
-	if isPatched {
-		l.Warnf("deployment already patched, running rollback first")
-		out, err := Rollback(l, deployment)
-		if err != nil {
-			return out, err
-		}
-	}
 
 	l.Infof("waiting for deployment to get ready")
 	out, err := WaitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
@@ -291,20 +274,15 @@ func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag str
 	return "", nil
 }
 
-func Rollback(l *logrus.Entry, deployment *v1.Deployment) (string, error) {
-	isPatched := deploymentIsPatched(l, deployment)
-	if !isPatched {
-		return "", fmt.Errorf("deployment not patched, stopping rollback")
-	}
-
+func Rollback(l *logrus.Entry, namespace, deployment string) (string, error) {
 	l.Infof("waiting for deployment to get ready")
-	out, err := WaitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
+	out, err := WaitForRollout(l, deployment, namespace, defaultWaitTimeout).Run()
 	if err != nil {
 		return out, err
 	}
 
-	l.Infof("rolling back deployment %v", deployment.Name)
-	out, err = RollbackDeployment(l, deployment.Name, deployment.Namespace).Run()
+	l.Infof("rolling back deployment %v", deployment)
+	out, err = RollbackDeployment(l, deployment, namespace).Run()
 	if err != nil {
 		return out, err
 	}
@@ -313,11 +291,6 @@ func Rollback(l *logrus.Entry, deployment *v1.Deployment) (string, error) {
 }
 
 func Shell(l *logrus.Entry, deployment *v1.Deployment, pod string) (string, error) {
-	isPatched := deploymentIsPatched(l, deployment)
-	if !isPatched {
-		return "", fmt.Errorf("deployment not patched, stopping shell exec")
-	}
-
 	l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
 	out, err := WaitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
 	if err != nil {
@@ -349,7 +322,7 @@ func CheckTCPConnection(host string, port int) (*net.TCPAddr, error) {
 	return l.Addr().(*net.TCPAddr), nil
 }
 
-func deploymentIsPatched(l *logrus.Entry, deployment *v1.Deployment) bool {
+func DeploymentIsPatched(l *logrus.Entry, deployment *v1.Deployment) bool {
 	_, ok := deployment.Spec.Template.ObjectMeta.Labels[defaultPatchedLabel]
 	return ok
 }
