@@ -21,16 +21,17 @@ import (
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v1"
 	v1 "k8s.io/api/apps/v1"
 )
 
 const (
-	devDeploymentPatchFile   = "deployment-patch.yaml"
-	defaultWaitTimeout       = "30s"
-	conditionContainersReady = "condition=ContainersReady"
-	defaultPatchedLabel      = "dev-mode-patched"
-	defaultPatchImage        = "gograpple-patch:latest"
+	devDeploymentPatchFile        = "deployment-patch.yaml"
+	defaultWaitTimeout            = "30s"
+	conditionContainersReady      = "condition=ContainersReady"
+	defaultPatchedLabel           = "dev-mode-patched"
+	defaultPatchImage             = "gograpple-patch:latest"
+	defaultConfigMapMount         = "/etc/config/mounted"
+	defaultConfigMapDeploymentKey = "deployment.json"
 )
 
 type Mount struct {
@@ -39,18 +40,22 @@ type Mount struct {
 }
 
 type patchValues struct {
-	PatchedLabelName string
-	ContainerName    string
-	Mounts           []Mount
-	Image            string
+	Label          string
+	Deployment     string
+	Container      string
+	ConfigMapMount string
+	Mounts         []Mount
+	Image          string
 }
 
-func newPatchValues(container string, mounts []Mount) *patchValues {
+func newPatchValues(deployment, container string, mounts []Mount) *patchValues {
 	return &patchValues{
-		PatchedLabelName: defaultPatchedLabel,
-		ContainerName:    container,
-		Mounts:           mounts,
-		Image:            defaultPatchImage,
+		Label:          defaultPatchedLabel,
+		Deployment:     deployment,
+		Container:      container,
+		ConfigMapMount: defaultConfigMapMount,
+		Mounts:         mounts,
+		Image:          defaultPatchImage,
 	}
 }
 
@@ -90,7 +95,7 @@ func (la *launchArgs) toJson() (string, error) {
 	return string(bytes), nil
 }
 
-func DelveCleanup(l *logrus.Entry, deployment *v1.Deployment, pod, container string) (string, error) {
+func DelveCleanup(l *logrus.Entry, deployment v1.Deployment, pod, container string) (string, error) {
 	l.Infof("removing delve service")
 	DeleteService(l, deployment, pod).Run()
 
@@ -101,7 +106,7 @@ func DelveCleanup(l *logrus.Entry, deployment *v1.Deployment, pod, container str
 	return "", nil
 }
 
-func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input string, args []string, delveContinue bool, host string, port int, vscode bool) (string, error) {
+func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input string, args []string, delveContinue bool, host string, port int, vscode bool) (string, error) {
 	goModDir, err := findGoProjectRoot(input)
 	if err != nil {
 		return "", fmt.Errorf("couldnt find go.mod dir for input %q", input)
@@ -163,7 +168,7 @@ func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input str
 		cmd = append(cmd, "--continue")
 	}
 	if len(args) == 0 {
-		args, err = getArgsFromPod(l, deployment.Namespace, pod, container)
+		args, err = getArgsFromConfigMap(l, deployment.Name, deployment.Namespace, container)
 		if err != nil {
 			return "", err
 		}
@@ -218,10 +223,20 @@ func Delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input str
 	return "", nil
 }
 
-func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag string, mounts []Mount) (string, error) {
+func Patch(l *logrus.Entry, deployment v1.Deployment, container, image, tag string, mounts []Mount) (string, error) {
+	l.Infof("creating a ConfigMap with deployment data")
+	bs, err := json.Marshal(deployment)
+	if err != nil {
+		return "", err
+	}
+	data := map[string]string{defaultConfigMapDeploymentKey: string(bs)}
+	out, err := CreateConfigMap(l, deployment.Name, deployment.Namespace, data)
+	if err != nil {
+		return out, err
+	}
 
 	l.Infof("waiting for deployment to get ready")
-	out, err := WaitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
+	out, err = WaitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
 	if err != nil {
 		return out, err
 	}
@@ -242,39 +257,24 @@ func Patch(l *logrus.Entry, deployment *v1.Deployment, container, image, tag str
 	l.Infof("rendering deployment patch template")
 	patch, err := renderTemplate(
 		path.Join(theHookPath, devDeploymentPatchFile),
-		newPatchValues(container, mounts),
+		newPatchValues(deployment.Name, container, mounts),
 	)
 	if err != nil {
 		return "", err
 	}
 
 	l.Infof("patching deployment for development")
-	out, err = PatchDeployment(l, patch, deployment.Name, deployment.Namespace).Run()
-	if err != nil {
-		return out, err
-	}
-
-	l.Infof("getting most recent pod with selector from deployment %v", deployment.Name)
-	pod, err := GetMostRecentPodBySelectors(l, deployment.Spec.Selector.MatchLabels, deployment.Namespace)
-	if err != nil {
-		return "", err
-	}
-
-	l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
-	out, err = WaitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
-	if err != nil {
-		return out, err
-	}
-
-	l.Infof("copying deployment %v args into pod %v", deployment.Name, pod)
-	if err := copyArgsToPod(l, deployment, pod, container); err != nil {
-		return "", err
-	}
-
-	return "", nil
+	return PatchDeployment(l, patch, deployment.Name, deployment.Namespace).Run()
 }
 
 func Rollback(l *logrus.Entry, namespace, deployment string) (string, error) {
+	l.Infof("removing configMap %v", deployment)
+	_, err := DeleteConfigMap(l, deployment, namespace)
+	if err != nil {
+		// may not exist
+		l.Warn(err)
+	}
+
 	l.Infof("waiting for deployment to get ready")
 	out, err := WaitForRollout(l, deployment, namespace, defaultWaitTimeout).Run()
 	if err != nil {
@@ -290,7 +290,28 @@ func Rollback(l *logrus.Entry, namespace, deployment string) (string, error) {
 	return "", nil
 }
 
-func Shell(l *logrus.Entry, deployment *v1.Deployment, pod string) (string, error) {
+func RollbackRecursive(l *logrus.Entry, deployment *v1.Deployment) error {
+	for {
+		if !DeploymentIsPatched(l, *deployment) {
+			return nil
+		}
+		out, err := Rollback(l, deployment.Namespace, deployment.Name)
+		if err != nil {
+			l.Warn(out)
+			return err
+		}
+		*deployment, err = GetDeployment(l, deployment.Namespace, deployment.Name)
+		if err != nil {
+			return err
+		}
+		err = RollbackRecursive(l, deployment)
+		if err != nil {
+			return err
+		}
+	}
+}
+
+func Shell(l *logrus.Entry, deployment v1.Deployment, pod string) (string, error) {
 	l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
 	out, err := WaitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
 	if err != nil {
@@ -322,7 +343,7 @@ func CheckTCPConnection(host string, port int) (*net.TCPAddr, error) {
 	return l.Addr().(*net.TCPAddr), nil
 }
 
-func DeploymentIsPatched(l *logrus.Entry, deployment *v1.Deployment) bool {
+func DeploymentIsPatched(l *logrus.Entry, deployment v1.Deployment) bool {
 	_, ok := deployment.Spec.Template.ObjectMeta.Labels[defaultPatchedLabel]
 	return ok
 }
@@ -350,7 +371,7 @@ func ValidateDeployment(l *logrus.Entry, namespace, deployment string) error {
 	return validateResource("deployment", deployment, fmt.Sprintf("for namespace %q", namespace), available)
 }
 
-func ValidatePod(l *logrus.Entry, deployment *v1.Deployment, pod *string) error {
+func ValidatePod(l *logrus.Entry, deployment v1.Deployment, pod *string) error {
 	if *pod == "" {
 		var err error
 		*pod, err = GetMostRecentPodBySelectors(l, deployment.Spec.Selector.MatchLabels, deployment.Namespace)
@@ -366,7 +387,7 @@ func ValidatePod(l *logrus.Entry, deployment *v1.Deployment, pod *string) error 
 	return validateResource("pod", *pod, fmt.Sprintf("for deployment %q", deployment.Name), available)
 }
 
-func ValidateContainer(l *logrus.Entry, deployment *v1.Deployment, container *string) error {
+func ValidateContainer(l *logrus.Entry, deployment v1.Deployment, container *string) error {
 	if *container == "" {
 		*container = deployment.Name
 	}
@@ -374,7 +395,7 @@ func ValidateContainer(l *logrus.Entry, deployment *v1.Deployment, container *st
 	return validateResource("container", *container, fmt.Sprintf("for deployment %q", deployment.Name), available)
 }
 
-func ValidateImage(l *logrus.Entry, deployment *v1.Deployment, container string, image, tag *string) error {
+func ValidateImage(l *logrus.Entry, deployment v1.Deployment, container string, image, tag *string) error {
 	if *image == "" {
 		for _, c := range deployment.Spec.Template.Spec.Containers {
 			if container == c.Name {
@@ -468,37 +489,21 @@ func debugBuild(l *logrus.Entry, input, goModDir, output string, env []string) (
 	return squadron.Command(l, cmd...).Cwd(goModDir).Env(env).Run()
 }
 
-func getArgsFromPod(l *logrus.Entry, namespace, pod, container string) ([]string, error) {
-	out, err := ExecPod(l, pod, container, namespace, []string{"cat", "/args.yaml"}).Run()
+func getArgsFromConfigMap(l *logrus.Entry, configMap, namespace, container string) ([]string, error) {
+	out, err := GetConfigMapKey(l, configMap, namespace, defaultConfigMapDeploymentKey)
 	if err != nil {
 		return nil, err
 	}
-	var args []string
-	if err := yaml.Unmarshal([]byte(out), &args); err != nil {
+	var d v1.Deployment
+	if err := json.Unmarshal([]byte(out), &d); err != nil {
 		return nil, err
 	}
-	return args, nil
-}
-
-func copyArgsToPod(l *logrus.Entry, deployment *v1.Deployment, pod, container string) error {
-	var args []string
-	for _, c := range deployment.Spec.Template.Spec.Containers {
+	for _, c := range d.Spec.Template.Spec.Containers {
 		if c.Name == container {
-			args = c.Args
-			break
+			return c.Args, nil
 		}
 	}
-
-	argsSource := path.Join(os.TempDir(), "args.yaml")
-	if err := squadron.GenerateYaml(argsSource, args); err != nil {
-		return err
-	}
-	argsDestination := "/args.yaml"
-	_, err := CopyToPod(l, pod, container, deployment.Namespace, argsSource, argsDestination).Run()
-	if err != nil {
-		return err
-	}
-	return nil
+	return nil, fmt.Errorf("no args found for container %q", container)
 }
 
 func signalCapture(l *logrus.Entry) {

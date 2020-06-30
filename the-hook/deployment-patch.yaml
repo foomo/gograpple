@@ -3,27 +3,28 @@ spec:
   template:
     metadata:
       labels:
-        {{ .PatchedLabelName }}: "true"
+        {{ .Label }}: "true"
     spec:
       containers:
-      - name: {{ .ContainerName }}
+      - name: {{ .Container }}
         image: {{ .Image }}
         command:
         args:
         livenessProbe:
         readinessProbe:
-        {{ if .Mounts }}
         volumeMounts:
+          - name: patch-configmap
+            mountPath: {{ .ConfigMapMount }}
           {{ range $i, $mount := .Mounts }}
-          - mountPath: {{ $mount.MountPath }}
-            name: "patch-mount-{{ $i }}"
+          - name: "patch-mount-{{ $i }}"
+            mountPath: {{ $mount.MountPath }}
           {{ end }}
-        {{ end }}
-      {{ if .Mounts }}
       volumes:
+        - name: patch-configmap
+          configMap:
+            name: {{ .Deployment }}
         {{ range $i, $mount := .Mounts }}
         - name: "patch-mount-{{ $i }}"
           hostPath:
             path: {{ $mount.HostPath }}
         {{ end }}
-      {{ end }}

@@ -92,23 +92,23 @@ func (n *Namespace) Set(value string) error {
 
 type Deployment struct {
 	*KubeResource
-	ns  *Namespace
-	res *appsv1.Deployment
+	ns  Namespace
+	res appsv1.Deployment
 }
 
-func newDeployment(ns *Namespace) *Deployment {
-	return &Deployment{newKubeResource(""), ns, nil}
+func newDeployment(ns Namespace) *Deployment {
+	return &Deployment{KubeResource: newKubeResource(""), ns: ns}
 }
 
 func (d *Deployment) Set(value string) error {
 	return gograpple.ValidateDeployment(d.l, d.ns.name, value)
 }
 
-func (d *Deployment) Resource() (*appsv1.Deployment, error) {
-	if d.res == nil {
+func (d *Deployment) Resource() (appsv1.Deployment, error) {
+	if d.res.Name == "" {
 		res, err := gograpple.GetDeployment(d.l, d.ns.name, d.name)
 		if err != nil {
-			return nil, err
+			return appsv1.Deployment{}, err
 		}
 		d.res = res
 	}
@@ -117,10 +117,10 @@ func (d *Deployment) Resource() (*appsv1.Deployment, error) {
 
 type Pod struct {
 	*KubeResource
-	d *Deployment
+	d Deployment
 }
 
-func newPod(d *Deployment) *Pod {
+func newPod(d Deployment) *Pod {
 	return &Pod{newKubeResource(""), d}
 }
 
@@ -135,12 +135,12 @@ func (p *Pod) Set(value string) error {
 
 type Container struct {
 	*KubeResource
-	d   *Deployment
-	obj *corev1.Container
+	d   Deployment
+	res corev1.Container
 }
 
-func newContainer(d *Deployment) *Container {
-	return &Container{newKubeResource(""), d, nil}
+func newContainer(d Deployment) *Container {
+	return &Container{KubeResource: newKubeResource(""), d: d}
 }
 
 func (c *Container) Set(value string) error {
@@ -154,7 +154,7 @@ func (c *Container) Set(value string) error {
 
 func (c *Container) ValidateImage(image, tag *string) error {
 	if *image == "" {
-		for _, container := range deployment.Spec.Template.Spec.Containers {
+		for _, container := range c.d.res.Spec.Template.Spec.Containers {
 			if c.name == container.Name {
 				pieces := strings.Split(container.Image, ":")
 				if len(pieces) != 2 {

@@ -119,7 +119,7 @@ func ExposePod(l *logrus.Entry, namespace, pod string, host string, port int) *s
 	return squadron.Command(l, cmd...)
 }
 
-func DeleteService(l *logrus.Entry, deployment *v1.Deployment, service string) *squadron.Cmd {
+func DeleteService(l *logrus.Entry, deployment v1.Deployment, service string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", deployment.Namespace,
 		"delete", "service", service,
@@ -127,7 +127,7 @@ func DeleteService(l *logrus.Entry, deployment *v1.Deployment, service string) *
 	return squadron.Command(l, cmd...)
 }
 
-func GetDeployment(l *logrus.Entry, namespace, deployment string) (*v1.Deployment, error) {
+func GetDeployment(l *logrus.Entry, namespace, deployment string) (v1.Deployment, error) {
 	cmd := []string{
 		"kubectl", "-n", namespace,
 		"get", "deployment", deployment,
@@ -135,13 +135,13 @@ func GetDeployment(l *logrus.Entry, namespace, deployment string) (*v1.Deploymen
 	}
 	out, err := squadron.Command(l, cmd...).Run()
 	if err != nil {
-		return nil, err
+		return v1.Deployment{}, err
 	}
 	var d v1.Deployment
 	if err := json.Unmarshal([]byte(out), &d); err != nil {
-		return nil, err
+		return v1.Deployment{}, err
 	}
-	return &d, nil
+	return d, nil
 }
 
 func GetNamespaces(l *logrus.Entry) ([]string, error) {
@@ -191,7 +191,7 @@ func GetPods(l *logrus.Entry, namespace string, selectors map[string]string) ([]
 	return parseResources(out, "\n", "pod/")
 }
 
-func GetContainers(l *logrus.Entry, deployment *v1.Deployment) []string {
+func GetContainers(l *logrus.Entry, deployment v1.Deployment) []string {
 	var containers []string
 	for _, c := range deployment.Spec.Template.Spec.Containers {
 		containers = append(containers, c.Name)
@@ -239,11 +239,56 @@ func parseResources(out, delimiter, prefix string) ([]string, error) {
 	return res, nil
 }
 
-
 func RestartDeployment(l *logrus.Entry, deployment, namespace string) *squadron.Cmd {
 	cmd := []string{
 		"kubectl", "-n", namespace,
 		"rollout", "restart", fmt.Sprintf("deployment/%v", deployment),
 	}
 	return squadron.Command(l, cmd...)
+}
+
+func CreateConfigMapFromFile(l *logrus.Entry, name, namespace, path string) (string, error) {
+	cmd := []string{
+		"kubectl", "-n", namespace,
+		"create", "configmap", name,
+		"--from-file", path,
+	}
+	return squadron.Command(l, cmd...).Run()
+}
+
+func CreateConfigMap(l *logrus.Entry, name, namespace string, keyMap map[string]string) (string, error) {
+	cmd := []string{
+		"kubectl", "-n", namespace,
+		"create", "configmap", name,
+	}
+	for key, value := range keyMap {
+		cmd = append(cmd, fmt.Sprintf("--from-literal=%v=%v", key, value))
+	}
+	return squadron.Command(l, cmd...).Run()
+}
+
+func DeleteConfigMap(l *logrus.Entry, name, namespace string) (string, error) {
+	cmd := []string{
+		"kubectl", "-n", namespace,
+		"delete", "configmap", name,
+	}
+	return squadron.Command(l, cmd...).Run()
+}
+
+func GetConfigMapKey(l *logrus.Entry, name, namespace, key string) (string, error) {
+	key = strings.ReplaceAll(key, ".", "\\.")
+	// jsonpath map key is not very fond of dots
+	cmd := []string{
+		"kubectl", "-n", namespace,
+		"get", "configmap", name,
+		"-o", fmt.Sprintf("jsonpath={.data.%v}", key),
+	}
+	out, err := squadron.Command(l, cmd...).Run()
+	if err != nil {
+		return out, err
+	}
+	if out == "" {
+		return out, fmt.Errorf("no key %q found in ConfigMap %q", key, name)
+	}
+	return out, nil
 }

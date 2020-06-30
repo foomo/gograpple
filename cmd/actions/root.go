@@ -50,9 +50,9 @@ var (
 )
 
 var (
-	log        = logrus.New()
-	l          *logrus.Entry
-	deployment *v1.Deployment
+	log            = logrus.New()
+	l              *logrus.Entry
+	flagDeployment v1.Deployment
 
 	rootCmd = &cobra.Command{
 		Use: "gograpple",
@@ -71,19 +71,19 @@ var (
 			if err != nil {
 				return err
 			}
-			deployment, err = gograpple.GetDeployment(l, flagNamespace, args[0])
+			flagDeployment, err = gograpple.GetDeployment(l, flagNamespace, args[0])
 			if err != nil {
 				return err
 			}
-			err = gograpple.ValidatePod(l, deployment, &flagPod)
+			err = gograpple.ValidatePod(l, flagDeployment, &flagPod)
 			if err != nil {
 				return err
 			}
-			err = gograpple.ValidateContainer(l, deployment, &flagContainer)
+			err = gograpple.ValidateContainer(l, flagDeployment, &flagContainer)
 			if err != nil {
 				return err
 			}
-			err = gograpple.ValidateImage(l, deployment, flagContainer, &flagImage, &flagTag)
+			err = gograpple.ValidateImage(l, flagDeployment, flagContainer, &flagImage, &flagTag)
 			if err != nil {
 				return err
 			}
@@ -96,14 +96,14 @@ var (
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flagRollback {
-				_, err := rollback(l, flagNamespace, deployment)
+				_, err := rollback(l, flagNamespace, flagDeployment)
 				return err
 			}
 			mounts, err := gograpple.ValidateMounts(flagDir, flagMounts)
 			if err != nil {
 				return err
 			}
-			_, err = patch(l, flagNamespace, deployment, flagPod, flagContainer, flagImage, flagTag, mounts)
+			_, err = patch(l, flagNamespace, flagDeployment, flagPod, flagContainer, flagImage, flagTag, mounts)
 			return err
 		},
 	}
@@ -112,7 +112,7 @@ var (
 		Short: "shell into the dev patched deployment",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			_, err := shell(l, deployment, flagPod)
+			_, err := shell(l, flagDeployment, flagPod)
 			if err != nil {
 				log.WithError(err).Fatalf("shelling into dev mode failed")
 			}
@@ -123,7 +123,7 @@ var (
 		Short: "start a headless delve debug server for .go input on a patched deployment",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
-			_, err := delve(l, deployment, flagPod, flagContainer, flagInput, flagArgs.items, flagListen.Host, flagListen.Port, flagCleanup, flagContinue, flagVscode)
+			_, err := delve(l, flagDeployment, flagPod, flagContainer, flagInput, flagArgs.items, flagListen.Host, flagListen.Port, flagCleanup, flagContinue, flagVscode)
 			if err != nil {
 				log.WithError(err).Fatalf("debug in dev mode failed")
 			}
@@ -131,43 +131,38 @@ var (
 	}
 )
 
-func patch(l *logrus.Entry, namespace string, deployment *v1.Deployment, pod, container, image, tag string, mounts []gograpple.Mount) (string, error) {
-	if gograpple.DeploymentIsPatched(l, deployment) {
-		l.Warnf("deployment already patched, running rollback first")
-		out, err := gograpple.Rollback(l, deployment.Namespace, deployment.Name)
-		if err != nil {
-			return out, err
-		}
-		deployment, err = gograpple.GetDeployment(l, deployment.Namespace, deployment.Name)
-		if err != nil {
-			return "", err
-		}
+func patch(l *logrus.Entry, namespace string, d v1.Deployment, pod, container, image, tag string, mounts []gograpple.Mount) (string, error) {
+	if gograpple.DeploymentIsPatched(l, d) {
+		l.Warn("deployment already patched, rolling back first")
 	}
-	return gograpple.Patch(l, deployment, container, image, tag, mounts)
+	if err := gograpple.RollbackRecursive(l, &d); err != nil {
+		return "", err
+	}
+	return gograpple.Patch(l, d, container, image, tag, mounts)
 }
 
-func rollback(l *logrus.Entry, namespace string, deployment *v1.Deployment) (string, error) {
-	if !gograpple.DeploymentIsPatched(l, deployment) {
+func rollback(l *logrus.Entry, namespace string, d v1.Deployment) (string, error) {
+	if !gograpple.DeploymentIsPatched(l, d) {
 		return "", fmt.Errorf("deployment not patched, stopping rollback")
 	}
-	return gograpple.Rollback(l, namespace, deployment.Name)
+	return "", gograpple.RollbackRecursive(l, &d)
 }
 
-func shell(l *logrus.Entry, deployment *v1.Deployment, pod string) (string, error) {
-	if !gograpple.DeploymentIsPatched(l, deployment) {
+func shell(l *logrus.Entry, d v1.Deployment, pod string) (string, error) {
+	if !gograpple.DeploymentIsPatched(l, d) {
 		return "", fmt.Errorf("deployment not patched, stopping shell")
 	}
-	return gograpple.Shell(l, deployment, pod)
+	return gograpple.Shell(l, d, pod)
 }
 
-func delve(l *logrus.Entry, deployment *v1.Deployment, pod, container, input string, args []string, host string, port int, cleanup, dlvContinue, vscode bool) (string, error) {
-	if !gograpple.DeploymentIsPatched(l, deployment) {
+func delve(l *logrus.Entry, d v1.Deployment, pod, container, input string, args []string, host string, port int, cleanup, dlvContinue, vscode bool) (string, error) {
+	if !gograpple.DeploymentIsPatched(l, d) {
 		return "", fmt.Errorf("deployment not patched, stopping delve")
 	}
 	if cleanup {
-		return gograpple.DelveCleanup(l, deployment, pod, container)
+		return gograpple.DelveCleanup(l, d, pod, container)
 	}
-	return gograpple.Delve(l, deployment, pod, container, input, args, dlvContinue, host, port, vscode)
+	return gograpple.Delve(l, d, pod, container, input, args, dlvContinue, host, port, vscode)
 }
 
 func Execute() {
