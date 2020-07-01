@@ -1,12 +1,9 @@
 package actions
 
 import (
-	"fmt"
-
 	"github.com/foomo/gograpple"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	v1 "k8s.io/api/apps/v1"
 )
 
 func init() {
@@ -50,9 +47,9 @@ var (
 )
 
 var (
-	log            = logrus.New()
-	l              *logrus.Entry
-	flagDeployment v1.Deployment
+	log     = logrus.New()
+	l       *logrus.Entry
+	grapple *gograpple.Grapple
 
 	rootCmd = &cobra.Command{
 		Use: "gograpple",
@@ -63,27 +60,7 @@ var (
 			if err != nil {
 				return err
 			}
-			err = gograpple.ValidateNamespace(l, flagNamespace)
-			if err != nil {
-				return err
-			}
-			err = gograpple.ValidateDeployment(l, flagNamespace, args[0])
-			if err != nil {
-				return err
-			}
-			flagDeployment, err = gograpple.GetDeployment(l, flagNamespace, args[0])
-			if err != nil {
-				return err
-			}
-			err = gograpple.ValidatePod(l, flagDeployment, &flagPod)
-			if err != nil {
-				return err
-			}
-			err = gograpple.ValidateContainer(l, flagDeployment, &flagContainer)
-			if err != nil {
-				return err
-			}
-			err = gograpple.ValidateImage(l, flagDeployment, flagContainer, &flagImage, &flagTag)
+			grapple, err = gograpple.NewGrapple(l, flagNamespace, args[0])
 			if err != nil {
 				return err
 			}
@@ -96,74 +73,35 @@ var (
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flagRollback {
-				_, err := rollback(l, flagNamespace, flagDeployment)
-				return err
+				return grapple.Rollback()
 			}
 			mounts, err := gograpple.ValidateMounts(flagDir, flagMounts)
 			if err != nil {
 				return err
 			}
-			_, err = patch(l, flagNamespace, flagDeployment, flagPod, flagContainer, flagImage, flagTag, mounts)
-			return err
+			return grapple.Patch(flagImage, flagTag, flagContainer, mounts)
 		},
 	}
 	shellCmd = &cobra.Command{
 		Use:   "shell [DEPLOYMENT] -n {NAMESPACE} -c {CONTAINER}",
 		Short: "shell into the dev patched deployment",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			_, err := shell(l, flagDeployment, flagPod)
-			if err != nil {
-				log.WithError(err).Fatalf("shelling into dev mode failed")
-			}
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return grapple.Shell(flagPod)
 		},
 	}
 	delveCmd = &cobra.Command{
 		Use:   "delve [DEPLOYMENT] -input {INPUT} -n {NAMESPACE} -c {CONTAINER}",
 		Short: "start a headless delve debug server for .go input on a patched deployment",
 		Args:  cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			_, err := delve(l, flagDeployment, flagPod, flagContainer, flagInput, flagArgs.items, flagListen.Host, flagListen.Port, flagCleanup, flagContinue, flagVscode)
-			if err != nil {
-				log.WithError(err).Fatalf("debug in dev mode failed")
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if flagCleanup {
+				return grapple.Cleanup(flagPod, flagContainer)
 			}
+			return grapple.Delve(flagPod, flagContainer, flagInput, flagArgs.items, flagListen.Host, flagListen.Port, flagContinue, flagVscode)
 		},
 	}
 )
-
-func patch(l *logrus.Entry, namespace string, d v1.Deployment, pod, container, image, tag string, mounts []gograpple.Mount) (string, error) {
-	if gograpple.DeploymentIsPatched(l, d) {
-		l.Warn("deployment already patched, rolling back first")
-	}
-	if err := gograpple.RollbackRecursive(l, &d); err != nil {
-		return "", err
-	}
-	return gograpple.Patch(l, d, container, image, tag, mounts)
-}
-
-func rollback(l *logrus.Entry, namespace string, d v1.Deployment) (string, error) {
-	if !gograpple.DeploymentIsPatched(l, d) {
-		return "", fmt.Errorf("deployment not patched, stopping rollback")
-	}
-	return "", gograpple.RollbackRecursive(l, &d)
-}
-
-func shell(l *logrus.Entry, d v1.Deployment, pod string) (string, error) {
-	if !gograpple.DeploymentIsPatched(l, d) {
-		return "", fmt.Errorf("deployment not patched, stopping shell")
-	}
-	return gograpple.Shell(l, d, pod)
-}
-
-func delve(l *logrus.Entry, d v1.Deployment, pod, container, input string, args []string, host string, port int, cleanup, dlvContinue, vscode bool) (string, error) {
-	if !gograpple.DeploymentIsPatched(l, d) {
-		return "", fmt.Errorf("deployment not patched, stopping delve")
-	}
-	if cleanup {
-		return gograpple.DelveCleanup(l, d, pod, container)
-	}
-	return gograpple.Delve(l, d, pod, container, input, args, dlvContinue, host, port, vscode)
-}
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {

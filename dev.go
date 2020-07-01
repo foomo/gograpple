@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/foomo/gograpple/bindata"
-	"github.com/foomo/squadron"
+	"github.com/foomo/squadron/util"
 	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/sirupsen/logrus"
@@ -95,35 +95,172 @@ func (la *launchArgs) toJson() (string, error) {
 	return string(bytes), nil
 }
 
-func DelveCleanup(l *logrus.Entry, deployment v1.Deployment, pod, container string) (string, error) {
-	l.Infof("removing delve service")
-	DeleteService(l, deployment, pod).Run()
-
-	l.Infof("cleaning up debug processes")
-	ExecPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", "dlv"}).Run()
-	ExecPod(l, pod, container, deployment.Namespace, []string{"pkill", "-9", deployment.Name}).Run()
-
-	return "", nil
+type Grapple struct {
+	l          *logrus.Entry
+	deployment v1.Deployment
+	kubeCmd    *util.KubeCmd
+	dockerCmd  *util.DockerCmd
+	goCmd      *util.GoCmd
 }
 
-func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input string, args []string, delveContinue bool, host string, port int, vscode bool) (string, error) {
+func NewGrapple(l *logrus.Entry, namespace, deployment string) (*Grapple, error) {
+	g := &Grapple{l: l}
+	g.kubeCmd = util.NewKubeCommand(l)
+	g.dockerCmd = util.NewDockerCommand(l)
+	g.goCmd = util.NewGoCommand(l)
+	g.kubeCmd.Args("-n", namespace)
+
+	if err := g.validateNamespace(namespace); err != nil {
+		return nil, err
+	}
+	if err := g.validateDeployment(namespace, deployment); err != nil {
+		return nil, err
+	}
+
+	d, err := g.kubeCmd.GetDeployment(deployment)
+	if err != nil {
+		return nil, err
+	}
+	g.deployment = *d
+
+	return g, nil
+}
+
+func (g *Grapple) Rollback() error {
+	if !g.isPatched() {
+		return fmt.Errorf("deployment not patched, stopping rollback")
+	}
+	return g.rollbackUntilUnpatched()
+}
+
+func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
+	if g.isPatched() {
+		g.l.Warn("deployment already patched, rolling back first")
+		if err := g.rollbackUntilUnpatched(); err != nil {
+			return err
+		}
+	}
+	if err := g.validateContainer(&container); err != nil {
+		return err
+	}
+	if err := g.validateImage(container, &image, &tag); err != nil {
+		return err
+	}
+
+	g.l.Infof("creating a ConfigMap with deployment data")
+	bs, err := json.Marshal(g.deployment)
+	if err != nil {
+		return err
+	}
+	data := map[string]string{defaultConfigMapDeploymentKey: string(bs)}
+	_, err = g.kubeCmd.CreateConfigMap(g.deployment.Name, data)
+	if err != nil {
+		return err
+	}
+
+	g.l.Infof("waiting for deployment to get ready")
+	_, err = g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run()
+	if err != nil {
+		return err
+	}
+
+	g.l.Infof("extracting patch files")
+	const patchFolder = "the-hook"
+	if err := bindata.RestoreAssets(os.TempDir(), patchFolder); err != nil {
+		return err
+	}
+	theHookPath := path.Join(os.TempDir(), patchFolder)
+
+	g.l.Infof("building patch image with %v:%v", image, tag)
+	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
+		fmt.Sprintf("IMAGE=%v:%v", image, tag), "-t", defaultPatchImage).Run()
+	if err != nil {
+		return err
+	}
+
+	g.l.Infof("rendering deployment patch template")
+	patch, err := renderTemplate(
+		path.Join(theHookPath, devDeploymentPatchFile),
+		newPatchValues(g.deployment.Name, container, mounts),
+	)
+	if err != nil {
+		return err
+	}
+
+	g.l.Infof("patching deployment for development")
+	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run()
+	return err
+}
+
+func (g Grapple) Shell(pod string) error {
+	if !g.isPatched() {
+		return fmt.Errorf("deployment not patched, stopping shell")
+	}
+	if err := g.validatePod(&pod); err != nil {
+		return err
+	}
+	g.l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
+	_, err := g.kubeCmd.WaitForPodState(pod, conditionContainersReady, defaultWaitTimeout).Run()
+	if err != nil {
+		return err
+	}
+
+	g.l.Infof("running interactive shell for patched deployment %v", g.deployment.Name)
+	_, err = g.kubeCmd.ExecShell(fmt.Sprintf("pod/%v", pod), "/").Run()
+	return err
+}
+
+func (g Grapple) Cleanup(pod, container string) error {
+	if !g.isPatched() {
+		return fmt.Errorf("deployment not patched, stopping delve")
+	}
+	if err := g.validatePod(&pod); err != nil {
+		return err
+	}
+	if err := g.validateContainer(&container); err != nil {
+		return err
+	}
+	return g.delveCleanup(g.l, pod, container)
+}
+
+func (g Grapple) delveCleanup(l *logrus.Entry, pod, container string) error {
+	l.Infof("removing delve service")
+	g.kubeCmd.DeleteService(pod).Run()
+
+	g.l.Infof("cleaning up debug processes")
+	g.kubeCmd.ExecPod(pod, container, []string{"pkill", "-9", "dlv"}).Run()
+	g.kubeCmd.ExecPod(pod, container, []string{"pkill", "-9", g.deployment.Name}).Run()
+
+	return nil
+}
+
+func (g Grapple) Delve(pod, container, input string, args []string, host string, port int, delveContinue, vscode bool) error {
+	if !g.isPatched() {
+		return fmt.Errorf("deployment not patched, stopping delve")
+	}
+	if err := g.validatePod(&pod); err != nil {
+		return err
+	}
+	if err := g.validateContainer(&container); err != nil {
+		return err
+	}
 	goModDir, err := findGoProjectRoot(input)
 	if err != nil {
-		return "", fmt.Errorf("couldnt find go.mod dir for input %q", input)
+		return fmt.Errorf("couldnt find go.mod dir for input %q", input)
 	}
 
-	binPath := path.Join(os.TempDir(), deployment.Name)
-	l.Infof("building %q for debug", input)
-	_, err = debugBuild(l, input, goModDir, binPath, []string{"GOOS=linux"})
+	binPath := path.Join(os.TempDir(), g.deployment.Name)
+	g.l.Infof("building %q for debug", input)
+	g.goCmd.Build(goModDir, binPath, input, `-gcflags="all=-N -l"`).Env("GOOS=linux").Run()
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	l.Infof("copying binary to pod %v", pod)
-	binDestination := fmt.Sprintf("/%v", deployment.Name)
-	_, err = CopyToPod(l, pod, container, deployment.Namespace, binPath, binDestination).Run()
+	g.l.Infof("copying binary to pod %v", pod)
+	binDest := fmt.Sprintf("/%v", g.deployment.Name)
+	_, err = g.kubeCmd.CopyToPod(pod, container, binPath, binDest).Run()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	// one locked point / helper to clean up
@@ -132,34 +269,34 @@ func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input stri
 	cleanup := func(reason string) {
 		cleanupLock.Lock()
 		defer cleanupLock.Unlock()
-		cl := l.WithField("reason", reason)
+		cl := g.l.WithField("reason", reason)
 		if cleanupStarted {
 			cl.Warning("aborting cleanup already started")
 			return
 		}
 		cleanupStarted = true
 		cl.Info("cleaning up")
-		out, errDelveCleanup := DelveCleanup(cl, deployment, pod, container)
+		errDelveCleanup := g.delveCleanup(cl, pod, container)
 		if errDelveCleanup != nil {
-			cl.WithError(errDelveCleanup).Error(out)
+			// cl.WithError(errDelveCleanup).Error(out)
 		} else {
-			cl.Info(out)
+			// cl.Info(out)
 		}
 	}
 	defer cleanup("termination")
 
-	signalCapture(l)
+	signalCapture(g.l)
 
-	l.Infof("exposing deployment %v for delve", deployment.Name)
-	out, err := ExposePod(l, deployment.Namespace, pod, host, port).Run()
+	g.l.Infof("exposing deployment %v for delve", g.deployment.Name)
+	_, err = g.kubeCmd.ExposePod(pod, host, port).Run()
 	if err != nil {
-		return out, err
+		return err
 
 	}
 
-	l.Infof("executing delve command on pod %v", pod)
+	g.l.Infof("executing delve command on pod %v", pod)
 	cmd := []string{
-		"dlv", "exec", binDestination,
+		"dlv", "exec", binDest,
 		"--api-version=2", "--headless",
 		fmt.Sprintf("--listen=:%v", port),
 		"--accept-multiclient",
@@ -168,9 +305,9 @@ func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input stri
 		cmd = append(cmd, "--continue")
 	}
 	if len(args) == 0 {
-		args, err = getArgsFromConfigMap(l, deployment.Name, deployment.Namespace, container)
+		args, err = g.getArgsFromConfigMap(g.deployment.Name, container)
 		if err != nil {
-			return "", err
+			return err
 		}
 	}
 	if len(args) > 0 {
@@ -178,9 +315,9 @@ func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input stri
 		cmd = append(cmd, args...)
 	}
 
-	ExecPod(l, pod, container, deployment.Namespace, cmd).PostStart(
+	g.kubeCmd.ExecPod(pod, container, cmd).PostStart(
 		func() error {
-			client, errTryDelveServer := tryDelveServer(l, host, port, 5, 1*time.Second)
+			client, errTryDelveServer := tryDelveServer(g.l, host, port, 5, 1*time.Second)
 			if errTryDelveServer != nil {
 				return errTryDelveServer
 			}
@@ -189,15 +326,15 @@ func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input stri
 				i := 0
 				for {
 					time.Sleep(time.Millisecond * 500)
-					_, state, errState := checkDelveServer(l.WithField("task", "watch-dlv"), host, port, 3*time.Second, client)
+					_, state, errState := checkDelveServer(g.l.WithField("task", "watch-dlv"), host, port, 3*time.Second, client)
 
 					if errState != nil {
-						l.WithError(errState).Error("dlv seems to be down on", host, ":", port)
+						g.l.WithError(errState).Error("dlv seems to be down on", host, ":", port)
 						cleanup("dlv is down")
 						os.Exit(1)
 					} else {
 						if i%20 == 0 {
-							l.WithField("pid", client.ProcessPid()).Info("dlv is up")
+							g.l.WithField("pid", client.ProcessPid()).Info("dlv is up")
 						}
 						if state.Exited {
 							cleanup("dlv state.Exited == true")
@@ -205,7 +342,7 @@ func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input stri
 						} else if !state.Running {
 							// there still is the case, when you are in a breakpoint on a zombie process
 							// dlv will not handle that gracefully
-							l.WithField("pid", client.ProcessPid()).Info("dlv is up - process is not running - is it a zombie ?!")
+							g.l.WithField("pid", client.ProcessPid()).Info("dlv is up - process is not running - is it a zombie ?!")
 						}
 					}
 					i++
@@ -213,113 +350,120 @@ func Delve(l *logrus.Entry, deployment v1.Deployment, pod, container, input stri
 			}()
 
 			if vscode {
-				if err := launchVscode(l, goModDir, pod, host, port, 5, 1*time.Second); err != nil {
+				if err := launchVscode(g.l, goModDir, pod, host, port, 5, 1*time.Second); err != nil {
 					return err
 				}
 			}
 			return nil
 		},
 	).Run()
-	return "", nil
+	return nil
 }
 
-func Patch(l *logrus.Entry, deployment v1.Deployment, container, image, tag string, mounts []Mount) (string, error) {
-	l.Infof("creating a ConfigMap with deployment data")
-	bs, err := json.Marshal(deployment)
+func (g Grapple) validateNamespace(namespace string) error {
+	available, err := g.kubeCmd.GetNamespaces()
 	if err != nil {
-		return "", err
+		return err
 	}
-	data := map[string]string{defaultConfigMapDeploymentKey: string(bs)}
-	out, err := CreateConfigMap(l, deployment.Name, deployment.Namespace, data)
-	if err != nil {
-		return out, err
-	}
-
-	l.Infof("waiting for deployment to get ready")
-	out, err = WaitForRollout(l, deployment.Name, deployment.Namespace, defaultWaitTimeout).Run()
-	if err != nil {
-		return out, err
-	}
-
-	l.Infof("extracting patch files")
-	const patchFolder = "the-hook"
-	if err := bindata.RestoreAssets(os.TempDir(), patchFolder); err != nil {
-		return "", err
-	}
-	theHookPath := path.Join(os.TempDir(), patchFolder)
-
-	l.Infof("building patch image with %v:%v", image, tag)
-	_, err = buildPatchImage(l, image, tag, theHookPath)
-	if err != nil {
-		return "", err
-	}
-
-	l.Infof("rendering deployment patch template")
-	patch, err := renderTemplate(
-		path.Join(theHookPath, devDeploymentPatchFile),
-		newPatchValues(deployment.Name, container, mounts),
-	)
-	if err != nil {
-		return "", err
-	}
-
-	l.Infof("patching deployment for development")
-	return PatchDeployment(l, patch, deployment.Name, deployment.Namespace).Run()
+	return validateResource("namespace", namespace, "", available)
 }
 
-func Rollback(l *logrus.Entry, namespace, deployment string) (string, error) {
-	l.Infof("removing configMap %v", deployment)
-	_, err := DeleteConfigMap(l, deployment, namespace)
+func (g Grapple) validateDeployment(namespace, deployment string) error {
+	available, err := g.kubeCmd.GetDeployments()
+	if err != nil {
+		return err
+	}
+	return validateResource("deployment", deployment, fmt.Sprintf("for namespace %q", namespace), available)
+}
+
+func (g Grapple) validatePod(pod *string) error {
+	if *pod == "" {
+		var err error
+		*pod, err = g.kubeCmd.GetMostRecentPodBySelectors(g.deployment.Spec.Selector.MatchLabels)
+		if err != nil || *pod == "" {
+			return err
+		}
+		return nil
+	}
+	available, err := g.kubeCmd.GetPods(g.deployment.Spec.Selector.MatchLabels)
+	if err != nil {
+		return err
+	}
+	return validateResource("pod", *pod, fmt.Sprintf("for deployment %q", g.deployment.Name), available)
+}
+
+func (g Grapple) validateContainer(container *string) error {
+	if *container == "" {
+		*container = g.deployment.Name
+	}
+	available := g.kubeCmd.GetContainers(g.deployment)
+	return validateResource("container", *container, fmt.Sprintf("for deployment %q", g.deployment.Name), available)
+}
+
+func (g Grapple) validateImage(container string, image, tag *string) error {
+	if *image == "" {
+		for _, c := range g.deployment.Spec.Template.Spec.Containers {
+			if container == c.Name {
+				pieces := strings.Split(c.Image, ":")
+				if len(pieces) != 2 {
+					return fmt.Errorf("deployment image %q has invalid format", c.Image)
+				}
+				*image = pieces[0]
+				*tag = pieces[1]
+				return nil
+			}
+		}
+	}
+	return nil
+}
+
+func (g Grapple) isPatched() bool {
+	_, ok := g.deployment.Spec.Template.ObjectMeta.Labels[defaultPatchedLabel]
+	return ok
+}
+
+func (g *Grapple) updateDeployment() error {
+	d, err := g.kubeCmd.GetDeployment(g.deployment.Name)
+	if err != nil {
+		return err
+	}
+	g.deployment = *d
+	return nil
+}
+
+func (g *Grapple) rollbackUntilUnpatched() error {
+	if !g.isPatched() {
+		return nil
+	}
+	if err := g.rollback(); err != nil {
+		return err
+	}
+	if err := g.updateDeployment(); err != nil {
+		return err
+	}
+	return g.rollbackUntilUnpatched()
+}
+
+func (g Grapple) rollback() error {
+	g.l.Infof("removing ConfigMap %v", g.deployment.Name)
+	_, err := g.kubeCmd.DeleteConfigMap(g.deployment.Name)
 	if err != nil {
 		// may not exist
-		l.Warn(err)
+		g.l.Warn(err)
 	}
 
-	l.Infof("waiting for deployment to get ready")
-	out, err := WaitForRollout(l, deployment, namespace, defaultWaitTimeout).Run()
+	g.l.Infof("waiting for deployment to get ready")
+	_, err = g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run()
 	if err != nil {
-		return out, err
+		return err
 	}
 
-	l.Infof("rolling back deployment %v", deployment)
-	out, err = RollbackDeployment(l, deployment, namespace).Run()
+	g.l.Infof("rolling back deployment %v", g.deployment.Name)
+	_, err = g.kubeCmd.RollbackDeployment(g.deployment.Name).Run()
 	if err != nil {
-		return out, err
+		return err
 	}
-
-	return "", nil
-}
-
-func RollbackRecursive(l *logrus.Entry, deployment *v1.Deployment) error {
-	for {
-		if !DeploymentIsPatched(l, *deployment) {
-			return nil
-		}
-		out, err := Rollback(l, deployment.Namespace, deployment.Name)
-		if err != nil {
-			l.Warn(out)
-			return err
-		}
-		*deployment, err = GetDeployment(l, deployment.Namespace, deployment.Name)
-		if err != nil {
-			return err
-		}
-		err = RollbackRecursive(l, deployment)
-		if err != nil {
-			return err
-		}
-	}
-}
-
-func Shell(l *logrus.Entry, deployment v1.Deployment, pod string) (string, error) {
-	l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
-	out, err := WaitForPodState(l, deployment.Namespace, pod, conditionContainersReady, defaultWaitTimeout).Run()
-	if err != nil {
-		return out, err
-	}
-
-	l.Infof("running interactive shell for patched deployment %v", deployment.Name)
-	return ExecShell(l, fmt.Sprintf("pod/%v", pod), "/", deployment.Namespace).Run()
+	return nil
 }
 
 func FindFreePort(host string) (int, error) {
@@ -351,63 +495,6 @@ func DeploymentIsPatched(l *logrus.Entry, deployment v1.Deployment) bool {
 func validateResource(resourceType, resource, suffix string, available []string) error {
 	if !stringInSlice(resource, available) {
 		return fmt.Errorf("%v %q not found %v, available: %v", resourceType, resource, suffix, strings.Join(available, ", "))
-	}
-	return nil
-}
-
-func ValidateNamespace(l *logrus.Entry, namespace string) error {
-	available, err := GetNamespaces(l)
-	if err != nil {
-		return err
-	}
-	return validateResource("namespace", namespace, "", available)
-}
-
-func ValidateDeployment(l *logrus.Entry, namespace, deployment string) error {
-	available, err := GetDeployments(l, namespace)
-	if err != nil {
-		return err
-	}
-	return validateResource("deployment", deployment, fmt.Sprintf("for namespace %q", namespace), available)
-}
-
-func ValidatePod(l *logrus.Entry, deployment v1.Deployment, pod *string) error {
-	if *pod == "" {
-		var err error
-		*pod, err = GetMostRecentPodBySelectors(l, deployment.Spec.Selector.MatchLabels, deployment.Namespace)
-		if err != nil || *pod == "" {
-			return err
-		}
-		return nil
-	}
-	available, err := GetPods(l, deployment.Namespace, deployment.Spec.Selector.MatchLabels)
-	if err != nil {
-		return err
-	}
-	return validateResource("pod", *pod, fmt.Sprintf("for deployment %q", deployment.Name), available)
-}
-
-func ValidateContainer(l *logrus.Entry, deployment v1.Deployment, container *string) error {
-	if *container == "" {
-		*container = deployment.Name
-	}
-	available := GetContainers(l, deployment)
-	return validateResource("container", *container, fmt.Sprintf("for deployment %q", deployment.Name), available)
-}
-
-func ValidateImage(l *logrus.Entry, deployment v1.Deployment, container string, image, tag *string) error {
-	if *image == "" {
-		for _, c := range deployment.Spec.Template.Spec.Containers {
-			if container == c.Name {
-				pieces := strings.Split(c.Image, ":")
-				if len(pieces) != 2 {
-					return fmt.Errorf("deployment image %q has invalid format", c.Image)
-				}
-				*image = pieces[0]
-				*tag = pieces[1]
-				return nil
-			}
-		}
 	}
 	return nil
 }
@@ -471,26 +558,8 @@ func stringInSlice(a string, list []string) bool {
 	return false
 }
 
-func buildPatchImage(l *logrus.Entry, image, tag, path string) (string, error) {
-	cmd := []string{
-		"docker", "build", ".",
-		"--build-arg", fmt.Sprintf("IMAGE=%v:%v", image, tag),
-		"-t", defaultPatchImage,
-	}
-	return squadron.Command(l, cmd...).Cwd(path).Run()
-}
-
-func debugBuild(l *logrus.Entry, input, goModDir, output string, env []string) (string, error) {
-	cmd := []string{
-		"go", "build",
-		`-gcflags="all=-N -l"`,
-		"-o", output, input,
-	}
-	return squadron.Command(l, cmd...).Cwd(goModDir).Env(env).Run()
-}
-
-func getArgsFromConfigMap(l *logrus.Entry, configMap, namespace, container string) ([]string, error) {
-	out, err := GetConfigMapKey(l, configMap, namespace, defaultConfigMapDeploymentKey)
+func (g Grapple) getArgsFromConfigMap(configMap, container string) ([]string, error) {
+	out, err := g.kubeCmd.GetConfigMapKey(configMap, defaultConfigMapDeploymentKey)
 	if err != nil {
 		return nil, err
 	}
@@ -553,18 +622,18 @@ func checkDelveServer(
 }
 
 func runOpen(l *logrus.Entry, path string) (string, error) {
-	var cmd []string
+	cmd := util.NewCommand(l, "open")
 	switch runtime.GOOS {
 	case "linux":
-		cmd = []string{"xdg-open", path}
+		cmd.Args("xdg-open", path)
 	case "windows":
-		cmd = []string{"rundll32", "url.dll,FileProtocolHandler", path}
+		cmd.Args("rundll32", "url.dll,FileProtocolHandler", path)
 	case "darwin":
-		cmd = []string{"open", path}
+		cmd.Args("open", path)
 	default:
 		return "", fmt.Errorf("unsupported platform")
 	}
-	return squadron.Command(l, cmd...).Run()
+	return cmd.Run()
 }
 
 func tryDelveServer(l *logrus.Entry, host string, port, tries int, sleep time.Duration) (client *rpc2.RPCClient, err error) {
@@ -582,10 +651,10 @@ func tryDelveServer(l *logrus.Entry, host string, port, tries int, sleep time.Du
 }
 
 func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries int, sleep time.Duration) error {
-	squadron.Command(l, "code", goModDir).PostEnd(func() error {
+	util.NewCommand(l, "code").Args(goModDir).PostEnd(func() error {
 		return tryCall(tries, time.Millisecond*200, func(i int) error {
 			l.Infof("waiting for vscode status (%v/%v)", i, tries)
-			_, err := squadron.Command(l, "code", "-s").Run()
+			_, err := util.NewCommand(l, "code").Args("-s").Run()
 			return err
 		})
 	}).Run()

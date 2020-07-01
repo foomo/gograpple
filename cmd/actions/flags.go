@@ -2,15 +2,10 @@ package actions
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/foomo/gograpple"
-	"github.com/sirupsen/logrus"
-	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 )
 
 type HostPort struct {
@@ -54,147 +49,6 @@ func (lf HostPort) String() string {
 
 func (*HostPort) Type() string {
 	return "host:port"
-}
-
-type KubeResource struct {
-	name string
-	l    *logrus.Entry
-}
-
-func newKubeResource(name string) *KubeResource {
-	return &KubeResource{name, newLogger(false, false)}
-}
-
-func (*KubeResource) Type() string {
-	return "string"
-}
-
-func (kr KubeResource) String() string {
-	return kr.name
-}
-
-func (kr *KubeResource) Set(value string) error {
-	kr.name = value
-	return nil
-}
-
-type Namespace struct {
-	*KubeResource
-}
-
-func newNamespace(defaultValue string) *Namespace {
-	return &Namespace{newKubeResource(defaultValue)}
-}
-
-func (n *Namespace) Set(value string) error {
-	return gograpple.ValidateNamespace(n.l, n.name)
-}
-
-type Deployment struct {
-	*KubeResource
-	ns  Namespace
-	res appsv1.Deployment
-}
-
-func newDeployment(ns Namespace) *Deployment {
-	return &Deployment{KubeResource: newKubeResource(""), ns: ns}
-}
-
-func (d *Deployment) Set(value string) error {
-	return gograpple.ValidateDeployment(d.l, d.ns.name, value)
-}
-
-func (d *Deployment) Resource() (appsv1.Deployment, error) {
-	if d.res.Name == "" {
-		res, err := gograpple.GetDeployment(d.l, d.ns.name, d.name)
-		if err != nil {
-			return appsv1.Deployment{}, err
-		}
-		d.res = res
-	}
-	return d.res, nil
-}
-
-type Pod struct {
-	*KubeResource
-	d Deployment
-}
-
-func newPod(d Deployment) *Pod {
-	return &Pod{newKubeResource(""), d}
-}
-
-func (p *Pod) Set(value string) error {
-	p.name = value
-	res, err := p.d.Resource()
-	if err != nil {
-		return err
-	}
-	return gograpple.ValidatePod(p.l, res, &p.name)
-}
-
-type Container struct {
-	*KubeResource
-	d   Deployment
-	res corev1.Container
-}
-
-func newContainer(d Deployment) *Container {
-	return &Container{KubeResource: newKubeResource(""), d: d}
-}
-
-func (c *Container) Set(value string) error {
-	c.name = value
-	res, err := c.d.Resource()
-	if err != nil {
-		return err
-	}
-	return gograpple.ValidateContainer(c.l, res, &c.name)
-}
-
-func (c *Container) ValidateImage(image, tag *string) error {
-	if *image == "" {
-		for _, container := range c.d.res.Spec.Template.Spec.Containers {
-			if c.name == container.Name {
-				pieces := strings.Split(container.Image, ":")
-				if len(pieces) != 2 {
-					return fmt.Errorf("deployment image %q has invalid format", container.Image)
-				}
-				*image = pieces[0]
-				*tag = pieces[1]
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("couldnt find deployment %q image for container %q", c.d.name, c.name)
-}
-
-type Path string
-
-func newPath() Path {
-	wd, _ := os.Getwd()
-	return Path(wd)
-}
-
-func (p *Path) Set(value string) error {
-	absPath, err := filepath.Abs(value)
-	if err != nil {
-		return err
-	}
-	_, err = os.Stat(absPath)
-	if err != nil {
-		return err
-	}
-	*p = Path(absPath)
-	return nil
-}
-
-func (p Path) String() string {
-	return string(p)
-}
-
-func (*Path) Type() string {
-	return "path"
 }
 
 type StringList struct {
