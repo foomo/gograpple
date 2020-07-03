@@ -8,9 +8,11 @@ import (
 
 var version = "latest"
 
+const commandNameVersion = "version"
+
 var (
 	versionCmd = &cobra.Command{
-		Use:   "version",
+		Use:   commandNameVersion,
 		Short: "prints cli version",
 		Long:  "prints the current installed cli version",
 		Run: func(cmd *cobra.Command, args []string) {
