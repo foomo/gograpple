@@ -622,14 +622,14 @@ func checkDelveServer(
 }
 
 func runOpen(l *logrus.Entry, path string) (string, error) {
-	cmd := util.NewCommand(l, "open")
+	var cmd *util.Cmd
 	switch runtime.GOOS {
 	case "linux":
-		cmd.Args("xdg-open", path)
+		cmd = util.NewCommand(l, "xdg-open").Args(path)
 	case "windows":
-		cmd.Args("rundll32", "url.dll,FileProtocolHandler", path)
+		cmd = util.NewCommand(l, "rundll32").Args("url.dll,FileProtocolHandler", path)
 	case "darwin":
-		cmd.Args("open", path)
+		cmd = util.NewCommand(l, "open").Args(path)
 	default:
 		return "", fmt.Errorf("unsupported platform")
 	}
