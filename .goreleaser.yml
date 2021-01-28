@@ -1,0 +1,31 @@
+# .goreleaser.yml
+# Build customization
+builds:
+  - binary: gograpple
+    main:   ./cmd/main.go
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/foomo/gograpple/cmd/actions.version={{.Version}}
+    goos:
+      - windows
+      - darwin
+      - linux
+    goarch:
+      - amd64
+
+# .goreleaser.yml
+archives:
+  - format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+
+brews:
+  # Reporitory to push the tap to.
+  - github:
+      owner: foomo
+      name: homebrew-gograpple
+    caveats: "gograpple -h"
+    homepage: "https://github.com/foomo/gograpple"
+    description: "CLI utility manage infrastructure as code with helm"

@@ -53,6 +53,9 @@ var (
 	rootCmd = &cobra.Command{
 		Use: "gograpple",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Name() == commandNameVersion {
+				return nil
+			}
 			l = newLogger(flagVerbose, flagJSONLog)
 			var err error
 			err = gograpple.ValidatePath(".", &flagDir)
