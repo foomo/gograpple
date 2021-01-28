@@ -47,7 +47,6 @@ var (
 )
 
 var (
-	log     = logrus.New()
 	l       *logrus.Entry
 	grapple *gograpple.Grapple
 
@@ -105,7 +104,7 @@ var (
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		log.Fatal(err)
+		l.Fatal(err)
 	}
 
 }

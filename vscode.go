@@ -3,6 +3,7 @@ package gograpple
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/foomo/squadron/util"
@@ -59,7 +60,7 @@ func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iter
 	if err != nil {
 		return err
 	}
-	_, err = runOpen(l, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+la)
+	_, err = runOpen(l, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+url.QueryEscape(la))
 	if err != nil {
 		return err
 	}
