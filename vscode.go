@@ -3,7 +3,10 @@ package gograpple
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/url"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/foomo/squadron/util"
@@ -23,7 +26,7 @@ type launchArgs struct {
 	ShowLog    bool   `json:"showLog,omitempty"`
 }
 
-func newLaunchArgs(pod, host string, port, iteration int) *launchArgs {
+func newLaunchArgs(pod, host string, port, iteration int, workspaceFolder string) *launchArgs {
 	return &launchArgs{
 		Host:       host,
 		Name:       fmt.Sprintf("delve-%v-run-%v", pod, iteration),
@@ -31,7 +34,8 @@ func newLaunchArgs(pod, host string, port, iteration int) *launchArgs {
 		Request:    "attach",
 		Type:       "go",
 		Mode:       "remote",
-		RemotePath: "${workspaceFolder}",
+		RemotePath: workspaceFolder,
+
 		// Trace:      "verbose",
 		// LogOutput: "rpc",
 		// ShowLog:   true,
@@ -47,7 +51,22 @@ func (la *launchArgs) toJson() (string, error) {
 }
 
 func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iteration int, sleep time.Duration) error {
-	util.NewCommand(l, "code").Args(goModDir).PostEnd(func() error {
+
+	openFile := goModDir
+	workspaceFolder := "${workspaceFolder}"
+	// is there a workspace in that dir
+	files, errReadDir := ioutil.ReadDir(goModDir)
+	if errReadDir == nil {
+		for _, file := range files {
+			if !file.IsDir() && strings.HasSuffix(file.Name(), ".code-workspace") {
+				openFile = filepath.Join(goModDir, file.Name())
+				workspaceFolder = goModDir
+				break
+			}
+		}
+	}
+
+	util.NewCommand(l, "code").Args(openFile).PostEnd(func() error {
 		return tryCall(tries, time.Millisecond*200, func(i int) error {
 			l.Infof("waiting for vscode status (%v/%v)", i, tries)
 			_, err := util.NewCommand(l, "code").Args("-s").Run()
@@ -56,7 +75,7 @@ func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iter
 	}).Run()
 
 	l.Infof("opening debug configuration")
-	la, err := newLaunchArgs(pod, host, port, iteration).toJson()
+	la, err := newLaunchArgs(pod, host, port, iteration, workspaceFolder).toJson()
 	if err != nil {
 		return err
 	}
