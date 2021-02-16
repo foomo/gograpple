@@ -47,8 +47,8 @@ github.com/foomo/config-bob v0.5.1 h1:OBEUWPwgKh+Q1ZwFmWgJKSzx9zbLIjZ55+rYt9aT2S
 github.com/foomo/config-bob v0.5.1/go.mod h1:0sAVUVcrJl8ZnqAaooTQsUlX8xlSXIPhxlbNwR4z5YE=
 github.com/foomo/htpasswd v0.0.0-20200116085101-e3a90e78da9c h1:DBGU7zCwrrPPDsD6+gqKG8UfMxenWg9BOJE/Nmfph+4=
 github.com/foomo/htpasswd v0.0.0-20200116085101-e3a90e78da9c/go.mod h1:SHawtolbB0ZOFoRWgDwakX5WpwuIWAK88bUXVZqK0Ss=
-github.com/foomo/squadron v0.8.9 h1:f3J2Mekeml4FBQLTzMLW4x5VQQKQcG/eh/v++838mLA=
-github.com/foomo/squadron v0.8.9/go.mod h1:37ZFjafQRE2HfMmygT5pc4ca2AXxgkRKgpW40slSJ8o=
+github.com/foomo/squadron v0.8.10 h1:0HkmE0HGf9eBnCHSmIkyxzyY49Su9HTT2ciS5Gel1d4=
+github.com/foomo/squadron v0.8.10/go.mod h1:37ZFjafQRE2HfMmygT5pc4ca2AXxgkRKgpW40slSJ8o=
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/fsnotify/fsnotify v1.4.9/go.mod h1:znqG4EE+3YCdAaPaxE2ZRY/06pZUdp0tY4IgpuI1SZQ=
 github.com/ghodss/yaml v0.0.0-20150909031657-73d445a93680/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=

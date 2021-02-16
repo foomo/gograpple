@@ -88,7 +88,7 @@ func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
 		return err
 	}
 
-	g.l.Infof("patching deployment for development")
+	g.l.Infof("patching deployment for development %s with patch %s", g.deployment.Name, patch)
 	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run()
 	return err
 }
