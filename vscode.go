@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/foomo/squadron/util"
+	"github.com/foomo/gograpple/exec"
 	"github.com/sirupsen/logrus"
 )
 
@@ -66,10 +66,10 @@ func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iter
 		}
 	}
 
-	util.NewCommand(l, "code").Args(openFile).PostEnd(func() error {
+	exec.NewCommand(l, "code").Args(openFile).PostEnd(func() error {
 		return tryCall(tries, time.Millisecond*200, func(i int) error {
 			l.Infof("waiting for vscode status (%v/%v)", i, tries)
-			_, err := util.NewCommand(l, "code").Args("-s").Run()
+			_, err := exec.NewCommand(l, "code").Args("-s").Run()
 			return err
 		})
 	}).Run()

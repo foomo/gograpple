@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -371,7 +373,27 @@ func listenForInterrupts(l *logrus.Entry) (chanExit chanCommand, chanReload chan
 func (g Grapple) rebuildAndUpload(goModDir, pod, container, input, binDest string) (tempDest string, err error) {
 	binPath := path.Join(os.TempDir(), g.deployment.Name)
 	g.l.Infof("building %q for debug", input)
-	_, errBuild := g.goCmd.Build(goModDir, binPath, input, `-gcflags="all=-N -l"`).Env("GOOS=linux").Run()
+
+	var relInputs []string
+	inputInfo, errInputInfo := os.Stat(input)
+	if errInputInfo != nil {
+		return "", err
+	}
+	if inputInfo.IsDir() {
+		if files, err := os.ReadDir(input); err != nil {
+			return "", err
+		} else {
+			for _, file := range files {
+				if path.Ext(file.Name()) == ".go" {
+					relInputs = append(relInputs, strings.TrimPrefix(path.Join(input, file.Name()), goModDir+string(filepath.Separator)))
+				}
+			}
+		}
+	} else {
+		relInputs = append(relInputs, strings.TrimPrefix(input, goModDir+string(filepath.Separator)))
+	}
+
+	_, errBuild := g.goCmd.Build(goModDir, binPath, relInputs, `-gcflags="all=-N -l"`).Env("GOOS=linux").Run()
 	if errBuild != nil {
 		return "", errBuild
 	}

@@ -93,7 +93,7 @@ var (
 		},
 	}
 	delveCmd = &cobra.Command{
-		Use:   "delve [DEPLOYMENT] -input {INPUT} -n {NAMESPACE} -c {CONTAINER}",
+		Use:   "delve [DEPLOYMENT] --input {INPUT} -n {NAMESPACE} -c {CONTAINER}",
 		Short: "start a headless delve debug server for .go input on a patched deployment",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

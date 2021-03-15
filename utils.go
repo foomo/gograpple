@@ -10,7 +10,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/foomo/squadron/util"
+	"github.com/foomo/gograpple/exec"
 	"github.com/sirupsen/logrus"
 )
 
@@ -36,14 +36,14 @@ func CheckTCPConnection(host string, port int) (*net.TCPAddr, error) {
 }
 
 func runOpen(l *logrus.Entry, path string) (string, error) {
-	var cmd *util.Cmd
+	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "linux":
-		cmd = util.NewCommand(l, "xdg-open").Args(path)
+		cmd = exec.NewCommand(l, "xdg-open").Args(path)
 	case "windows":
-		cmd = util.NewCommand(l, "rundll32").Args("url.dll,FileProtocolHandler", path)
+		cmd = exec.NewCommand(l, "rundll32").Args("url.dll,FileProtocolHandler", path)
 	case "darwin":
-		cmd = util.NewCommand(l, "open").Args(path)
+		cmd = exec.NewCommand(l, "open").Args(path)
 	default:
 		return "", fmt.Errorf("unsupported platform")
 	}

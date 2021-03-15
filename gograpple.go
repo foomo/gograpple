@@ -1,7 +1,7 @@
 package gograpple
 
 import (
-	"github.com/foomo/squadron/util"
+	"github.com/foomo/gograpple/exec"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/apps/v1"
 )
@@ -19,16 +19,16 @@ const (
 type Grapple struct {
 	l          *logrus.Entry
 	deployment v1.Deployment
-	kubeCmd    *util.KubeCmd
-	dockerCmd  *util.DockerCmd
-	goCmd      *util.GoCmd
+	kubeCmd    *exec.KubectlCmd
+	dockerCmd  *exec.DockerCmd
+	goCmd      *exec.GoCmd
 }
 
 func NewGrapple(l *logrus.Entry, namespace, deployment string) (*Grapple, error) {
 	g := &Grapple{l: l}
-	g.kubeCmd = util.NewKubeCommand(l)
-	g.dockerCmd = util.NewDockerCommand(l)
-	g.goCmd = util.NewGoCommand(l)
+	g.kubeCmd = exec.NewKubectlCommand(l)
+	g.dockerCmd = exec.NewDockerCommand(l)
+	g.goCmd = exec.NewGoCommand(l)
 	g.kubeCmd.Args("-n", namespace)
 
 	if err := g.validateNamespace(namespace); err != nil {
