@@ -50,7 +50,7 @@ func runOpen(l *logrus.Entry, path string) (string, error) {
 	return cmd.Run()
 }
 
-func tryCall(tries int, waitBetweenAttempts time.Duration, f func(i int) error) error {
+func tryCall(l *logrus.Entry, tries int, waitBetweenAttempts time.Duration, f func(i int) error) error {
 	var err error
 	for i := 1; i < tries+1; i++ {
 		err = f(i)

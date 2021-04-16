@@ -53,9 +53,12 @@ func (g Grapple) Delve(pod, container, input string, args []string, host string,
 	run := func(chanExitRun chan struct{}) {
 		iteration++
 		g.l.Infof("executing delve command on pod %v", pod)
-		g.kubeCmd.ExecPod(pod, container, cmd).PostStart(
+		_, errRun := g.kubeCmd.ExecPod(pod, container, cmd).PostStart(
 			g.dlvWatch(host, pod, port, iteration, lockingCleanup, vscode, goModDir, chanExitRun),
 		).Run()
+		if errRun != nil && errRun.Error() != "signal: interrupt" {
+			chanRunErr <- errRun
+		}
 	}
 	g.l.Info("running initial cleanup, just in case ...")
 	g.dlvCleanup(g.l, pod, container)
@@ -67,6 +70,8 @@ func (g Grapple) Delve(pod, container, input string, args []string, host string,
 		case errRun := <-chanRunErr:
 			lockingCleanup(errRun.Error())
 			return errRun
+		case <-chanExitRun:
+
 		case <-chanExit:
 			lockingCleanup("termination")
 			return nil
@@ -135,9 +140,9 @@ func (g Grapple) dlvMoveBinary(pod, container, binTemp, binDest string) error {
 
 func (g Grapple) dlvWatch(host string, pod string, port, iteration int, cleanup func(reason string) error, vscode bool, goModDir string, chanExitRun chanCommand) func() error {
 	return func() error {
-		client, errTryDelveServer := dlvTryServer(g.l, host, port, 5, 1*time.Second)
+		client, errTryDelveServer := dlvTryServer(g.l, host, port, 50, 200*time.Millisecond)
 		if errTryDelveServer != nil {
-			return errTryDelveServer
+			return errors.New("could not get dlv client: " + errTryDelveServer.Error())
 		}
 		go func() {
 			i := 0
@@ -145,7 +150,7 @@ func (g Grapple) dlvWatch(host string, pod string, port, iteration int, cleanup 
 				select {
 				case <-chanExitRun:
 					return
-				case <-time.After(time.Millisecond * 500):
+				case <-time.After(1000 * time.Millisecond):
 					_, state, errState := dlvCheckServer(g.l.WithField("task", "watch-dlv"), host, port, 3*time.Second, client)
 					if errState != nil {
 						g.l.WithError(errState).Error("dlv seems to be down on", host, ":", port)
@@ -161,7 +166,7 @@ func (g Grapple) dlvWatch(host string, pod string, port, iteration int, cleanup 
 					} else if !state.Running {
 						// there still is the case, when you are in a breakpoint on a zombie process
 						// dlv will not handle that gracefully
-						g.l.WithField("pid", client.ProcessPid()).Info("dlv is up - process is not running - is it a zombie ?!")
+						g.l.WithField("pid", client.ProcessPid()).Info("dlv is up - process is not running - is it a zombie, or has it been halted by a breakpoint ?")
 					}
 					i++
 				}
@@ -273,9 +278,9 @@ func (g Grapple) dlvCleanup(l *logrus.Entry, pod, container string) error {
 }
 
 func dlvTryServer(l *logrus.Entry, host string, port, tries int, sleep time.Duration) (client *rpc2.RPCClient, err error) {
-	errTryCall := tryCall(tries, sleep, func(i int) error {
+	errTryCall := tryCall(l, tries, sleep, func(i int) error {
 		l.Infof("checking delve connection on %v:%v (%v/%v)", host, port, i, tries)
-		newClient, _, errCheck := dlvCheckServer(l, host, port, 1*time.Second, nil)
+		newClient, _, errCheck := dlvCheckServer(l, host, port, 200*time.Millisecond, client)
 		client = newClient
 		return errCheck
 	})
@@ -292,36 +297,43 @@ func dlvCheckServer(
 ) (
 	*rpc2.RPCClient, *api.DebuggerState, error,
 ) {
-	var conn net.Conn
-
 	if client == nil {
-		// get a tcp connection for the rpc dlv rpc client
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%v:%v", host, port), timeout)
+		// connection timeouts suck with k8s, because the port is open and you can connect, but ...
+		// early on the connection is a dead and the timeout does not kick in, despite the fact
+		// that the connection is not "really" establised
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%v:%v", host, port), time.Hour)
 		if err != nil {
 			return nil, nil, err
 		}
-		timer := time.AfterFunc(timeout, func() {
-			errClose := conn.Close()
-			if errClose != nil {
-				l.WithError(errClose).Error("could not close stale connection")
-			}
-			l.Warn("stale connection timeout")
-		})
-		// rpc2.NewClientFromConn(conn) will implicitly call setAPIVersion on the dlv server
-		// while there might be a connection to a socket, that was created with
-		// kubctl expose it still might happen, that dlv will not answer
-		// for this reason we are creating this hack
-		client = rpc2.NewClientFromConn(conn)
-		if !timer.Stop() {
-			// we ripped out the underlying connection
+		chanClient := make(chan struct{})
+		go func() {
+			// the next level of suck is the rpc client
+			// it does not return an error for its constructor,
+			// even though it actually does make a call and that fails
+			// and the cient will not do any other calls,
+			// because it has shutdown internally, without telling us
+			// at least that is what I understand here
+			client = rpc2.NewClientFromConn(conn)
+			chanClient <- struct{}{}
+		}()
+		select {
+		case <-time.After(timeout):
+			// this is the actual timeout, because the connetion timeout does not work,
+			// because k8s ...
+			conn.Close()
+			// l.Warn("dlv server check timeout", timeout)
 			return nil, nil, errors.New("stale connection to dlv, aborting after timeout")
+		case <-chanClient:
+			// we are good to go
+			// l.Info("hey, we got a client")
 		}
 	}
-	st, errState := client.GetStateNonBlocking()
-	if errState == nil && conn != nil {
-		conn.SetDeadline(time.Now().Add(time.Second * 3600))
+	st, errState := client.GetState()
+	if errState != nil {
+		// l.Info("could not get state from server using client", errState)
+		return nil, nil, errState
 	}
-	return client, st, errState
+	return client, st, nil
 }
 
 type chanCommand chan struct{}
@@ -335,7 +347,7 @@ func listenForInterrupts(l *logrus.Entry) (chanExit chanCommand, chanReload chan
 	i := 0
 	exiting := false
 	readyToReset := false
-	durReset := time.Millisecond * 5000
+	durReset := 2 * time.Second
 	go func() {
 		for {
 			select {

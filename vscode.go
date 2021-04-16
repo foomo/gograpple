@@ -67,7 +67,7 @@ func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iter
 	}
 
 	exec.NewCommand(l, "code").Args(openFile).PostEnd(func() error {
-		return tryCall(tries, time.Millisecond*200, func(i int) error {
+		return tryCall(l, tries, 200*time.Millisecond, func(i int) error {
 			l.Infof("waiting for vscode status (%v/%v)", i, tries)
 			_, err := exec.NewCommand(l, "code").Args("-s").Run()
 			return err
