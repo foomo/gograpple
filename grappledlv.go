@@ -3,6 +3,7 @@ package gograpple
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"os/signal"
@@ -96,13 +97,16 @@ func (g Grapple) Delve(pod, container, input string, args []string, host string,
 			if errMove != nil {
 				return errMove
 			}
-			errExpose := g.dlvExpose(pod, host, port)
-			if errExpose != nil {
-				return errExpose
-			}
+			go func() {
+				errExpose := g.dlvExpose(pod, host, port)
+				if errExpose != nil {
+					log.Println(errExpose)
+				}
+			}()
+
 			go run(chanExitRun)
 		case err := <-chanErr:
-			lockingCleanup("an error occurred while listeing for keyboard commands:" + err.Error())
+			lockingCleanup("an error occurred while listening for keyboard commands:" + err.Error())
 			return err
 		}
 	}
@@ -210,6 +214,15 @@ func (g Grapple) dlvGetLockingCleanup(pod, container string) (chanExitRun chanCo
 }
 
 func (g Grapple) dlvExpose(pod, host string, port int) error {
+	g.l.Infof("exposing deployment %v for delve", g.deployment.Name)
+	_, err := g.kubeCmd.ForwardPod(pod, host, port).Run()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g Grapple) _dlvExpose(pod, host string, port int) error {
 	g.l.Infof("exposing deployment %v for delve", g.deployment.Name)
 	_, err := g.kubeCmd.ExposePod(pod, host, port).Run()
 	if err != nil {

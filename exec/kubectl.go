@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -79,6 +80,11 @@ func (c KubectlCmd) ExposePod(pod string, host string, port int) *Cmd {
 	}
 	return c.Args("expose", "pod", pod, "--type=LoadBalancer",
 		fmt.Sprintf("--port=%v", port), fmt.Sprintf("--external-ip=%v", host))
+}
+
+func (c KubectlCmd) ForwardPod(pod string, host string, port int) *Cmd {
+	// kubectl port-forward pods/mongo-75f59d57f4-4nd6q 28015:27017
+	return c.Args("port-forward", "pods/" + pod, strconv.Itoa(port) +":"+strconv.Itoa(port))
 }
 
 func (c KubectlCmd) DeleteService(service string) *Cmd {
