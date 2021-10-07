@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"path"
@@ -13,32 +12,34 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-delve/delve/service/api"
 	"github.com/go-delve/delve/service/rpc2"
 	"github.com/sirupsen/logrus"
 )
 
-func (g Grapple) Delve(pod, container, input string, args []string, host string, port int, delveContinue, vscode bool) error {
-	// input validation
+func (g Grapple) binDestination() string {
+	return "/" + g.deployment.Name
+}
+
+func (g Grapple) Delve(pod, container, sourcePath string, args []string, host string, port int, delveContinue, vscode bool) error {
+	// validate resources and source path
 	if err := g.validatePod(&pod); err != nil {
 		return err
 	}
 	if err := g.validateContainer(&container); err != nil {
 		return err
 	}
-	goModDir, err := findGoProjectRoot(input)
+	goModDir, err := findGoProjectRoot(sourcePath)
 	if err != nil {
-		return fmt.Errorf("couldnt find go.mod dir for input %q", input)
+		return fmt.Errorf("couldnt find go.mod dir for source path %q", sourcePath)
 	}
 
-	// are patched?
+	// check is deployment patched
 	if !g.isPatched() {
 		return fmt.Errorf("deployment not patched, stopping delve")
 	}
 
-	binDest := "/" + g.deployment.Name
-	chanExitRun, lockingCleanup := g.dlvGetLockingCleanup(pod, container)
-	cmd, errCmd := g.dlvGetCommand(container, binDest, port, delveContinue, args)
+	chanExitRun, lockingCleanup := g.getCleanupFunc(pod, container)
+	cmd, errCmd := g.dlvGetCommand(container, g.binDestination(), port, delveContinue, args)
 	if errCmd != nil {
 		return errCmd
 	}
@@ -86,7 +87,7 @@ func (g Grapple) Delve(pod, container, input string, args []string, host string,
 				wgReload.Done()
 			}()
 			go func() {
-				binTemp, errRebuild = g.rebuildAndUpload(goModDir, pod, container, input, binDest)
+				binTemp, errRebuild = g.rebuildAndUpload(goModDir, pod, container, sourcePath, binDest)
 				wgReload.Done()
 			}()
 			wgReload.Wait()
@@ -185,11 +186,10 @@ func (g Grapple) dlvWatch(host string, pod string, port, iteration int, cleanup 
 	}
 }
 
-func (g Grapple) dlvGetLockingCleanup(pod, container string) (chanExitRun chanCommand, cleanup func(reason string) error) {
+func (g Grapple) getCleanupFunc(pod, container string, chanExitRun *chanCommand) (cleanup func(reason string) error) {
 	cleanupLock := sync.Mutex{}
 	cleanupStarted := false
-	chanExitRun = make(chanCommand)
-	return chanExitRun, func(reason string) error {
+	return func(reason string) error {
 		cleanupLock.Lock()
 		defer cleanupLock.Unlock()
 		cl := g.l.WithField("reason", reason)
@@ -202,8 +202,11 @@ func (g Grapple) dlvGetLockingCleanup(pod, container string) (chanExitRun chanCo
 			cleanupStarted = false
 		}()
 		cl.Info("cleaning up")
-		go func() { chanExitRun <- struct{}{} }()
-		cl.Info("informed running tasks")
+		g.l.Debug("cleanup: writing to exit channel")
+		go func() {
+			*chanExitRun <- struct{}{}
+		}()
+		g.l.Debug("cleanup: running")
 		errDelveCleanup := g.dlvCleanup(cl, pod, container)
 		if errDelveCleanup != nil {
 			cl.WithError(errDelveCleanup).Error("could not clean up")
@@ -302,51 +305,6 @@ func dlvTryServer(l *logrus.Entry, host string, port, tries int, sleep time.Dura
 	}
 	l.Infof("delve server listening on %v:%v", host, port)
 	return client, nil
-}
-
-func dlvCheckServer(
-	l *logrus.Entry, host string, port int, timeout time.Duration,
-	client *rpc2.RPCClient,
-) (
-	*rpc2.RPCClient, *api.DebuggerState, error,
-) {
-	if client == nil {
-		// connection timeouts suck with k8s, because the port is open and you can connect, but ...
-		// early on the connection is a dead and the timeout does not kick in, despite the fact
-		// that the connection is not "really" establised
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%v:%v", host, port), time.Hour)
-		if err != nil {
-			return nil, nil, err
-		}
-		chanClient := make(chan struct{})
-		go func() {
-			// the next level of suck is the rpc client
-			// it does not return an error for its constructor,
-			// even though it actually does make a call and that fails
-			// and the cient will not do any other calls,
-			// because it has shutdown internally, without telling us
-			// at least that is what I understand here
-			client = rpc2.NewClientFromConn(conn)
-			chanClient <- struct{}{}
-		}()
-		select {
-		case <-time.After(timeout):
-			// this is the actual timeout, because the connetion timeout does not work,
-			// because k8s ...
-			conn.Close()
-			// l.Warn("dlv server check timeout", timeout)
-			return nil, nil, errors.New("stale connection to dlv, aborting after timeout")
-		case <-chanClient:
-			// we are good to go
-			// l.Info("hey, we got a client")
-		}
-	}
-	st, errState := client.GetState()
-	if errState != nil {
-		// l.Info("could not get state from server using client", errState)
-		return nil, nil, errState
-	}
-	return client, st, nil
 }
 
 type chanCommand chan struct{}

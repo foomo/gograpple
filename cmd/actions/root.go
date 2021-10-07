@@ -17,7 +17,7 @@ func init() {
 	patchCmd.Flags().StringVarP(&flagImage, "image", "i", "", "image to be used for patching (default deployment image)")
 	patchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
 	patchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
-	delveCmd.Flags().StringVar(&flagInput, "input", "", "go file input (default cwd)")
+	delveCmd.Flags().StringVar(&flagSourcePath, "source", "", ".go file source path (default cwd)")
 	delveCmd.Flags().BoolVar(&flagCleanup, "cleanup", false, "cleanup delve debug session")
 	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "delve --continue option")
 	delveCmd.Flags().Var(flagArgs, "args", "go file args")
@@ -28,22 +28,22 @@ func init() {
 }
 
 var (
-	flagTag       string
-	flagDir       string
-	flagVerbose   bool
-	flagNamespace string
-	flagPod       string
-	flagContainer string
-	flagImage     string
-	flagMounts    []string
-	flagInput     string
-	flagArgs      = newStringList(" ")
-	flagCleanup   bool
-	flagRollback  bool
-	flagContinue  bool
-	flagListen    = newHostPort("127.0.0.1", 0)
-	flagVscode    bool
-	flagJSONLog   bool
+	flagTag        string
+	flagDir        string
+	flagVerbose    bool
+	flagNamespace  string
+	flagPod        string
+	flagContainer  string
+	flagImage      string
+	flagMounts     []string
+	flagSourcePath string
+	flagArgs       = newStringList(" ")
+	flagCleanup    bool
+	flagRollback   bool
+	flagContinue   bool
+	flagListen     = newHostPort("127.0.0.1", 0)
+	flagVscode     bool
+	flagJSONLog    bool
 )
 
 var (
@@ -66,7 +66,7 @@ var (
 			if err != nil {
 				return err
 			}
-			return gograpple.ValidatePath(flagDir, &flagInput)
+			return gograpple.ValidatePath(flagDir, &flagSourcePath)
 		},
 	}
 	patchCmd = &cobra.Command{
@@ -100,7 +100,7 @@ var (
 			if flagCleanup {
 				return grapple.Cleanup(flagPod, flagContainer)
 			}
-			return grapple.Delve(flagPod, flagContainer, flagInput, flagArgs.items, flagListen.Host, flagListen.Port, flagContinue, flagVscode)
+			return grapple.Delve(flagPod, flagContainer, flagSourcePath, flagArgs.items, flagListen.Host, flagListen.Port, flagContinue, flagVscode)
 		},
 	}
 )
