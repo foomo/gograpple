@@ -109,7 +109,6 @@ func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		l.Fatal(err)
 	}
-
 }
 
 func newLogger(verbose, jsonLog bool) *logrus.Entry {

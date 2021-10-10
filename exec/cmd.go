@@ -12,7 +12,7 @@ import (
 
 type Cmd struct {
 	l *logrus.Entry
-	// cmd           *exec.Cmd
+	// actual        *exec.Cmd
 	command       []string
 	cwd           string
 	env           []string
@@ -22,7 +22,7 @@ type Cmd struct {
 	wait          bool
 	t             time.Duration
 	preStartFunc  func() error
-	postStartFunc func() error
+	postStartFunc func(p *os.Process) error
 	postEndFunc   func() error
 }
 
@@ -95,7 +95,7 @@ func (c *Cmd) PreStart(f func() error) *Cmd {
 	return c
 }
 
-func (c *Cmd) PostStart(f func() error) *Cmd {
+func (c *Cmd) PostStart(f func(p *os.Process) error) *Cmd {
 	c.postStartFunc = f
 	return c
 }
@@ -133,7 +133,7 @@ func (c *Cmd) Run() (string, error) {
 	}
 
 	if c.postStartFunc != nil {
-		if err := c.postStartFunc(); err != nil {
+		if err := c.postStartFunc(cmd.Process); err != nil {
 			return "", err
 		}
 	}

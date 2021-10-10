@@ -1,12 +1,9 @@
 package gograpple
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-
-	v1 "k8s.io/api/apps/v1"
 )
 
 func (g Grapple) Cleanup(pod, container string) error {
@@ -19,7 +16,7 @@ func (g Grapple) Cleanup(pod, container string) error {
 	if err := g.validateContainer(&container); err != nil {
 		return err
 	}
-	return g.dlvCleanup(g.l, pod, container)
+	return g.cleanupDelve(pod, container)
 }
 
 func (g Grapple) getPIDsOf(pod, container, name string) (pids []string, err error) {
@@ -44,21 +41,4 @@ func (g *Grapple) updateDeployment() error {
 	}
 	g.deployment = *d
 	return nil
-}
-
-func (g Grapple) getArgsFromConfigMap(configMap, container string) ([]string, error) {
-	out, err := g.kubeCmd.GetConfigMapKey(configMap, defaultConfigMapDeploymentKey)
-	if err != nil {
-		return nil, err
-	}
-	var d v1.Deployment
-	if err := json.Unmarshal([]byte(out), &d); err != nil {
-		return nil, err
-	}
-	for _, c := range d.Spec.Template.Spec.Containers {
-		if c.Name == container {
-			return c.Args, nil
-		}
-	}
-	return nil, fmt.Errorf("no args found for container %q", container)
 }

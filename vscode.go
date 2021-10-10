@@ -26,10 +26,10 @@ type launchArgs struct {
 	ShowLog    bool   `json:"showLog,omitempty"`
 }
 
-func newLaunchArgs(pod, host string, port, iteration int, workspaceFolder string) *launchArgs {
+func newLaunchArgs(host string, port int, workspaceFolder string) *launchArgs {
 	return &launchArgs{
 		Host:       host,
-		Name:       fmt.Sprintf("delve-%v-run-%v", pod, iteration),
+		Name:       fmt.Sprintf("delve-%v", time.Now().Unix()),
 		Port:       port,
 		Request:    "attach",
 		Type:       "go",
@@ -50,8 +50,7 @@ func (la *launchArgs) toJson() (string, error) {
 	return string(bytes), nil
 }
 
-func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iteration int, sleep time.Duration) error {
-
+func launchVSCode(l *logrus.Entry, goModDir, host string, port, tries int) error {
 	openFile := goModDir
 	workspaceFolder := "${workspaceFolder}"
 	// is there a workspace in that dir
@@ -75,7 +74,7 @@ func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iter
 	}).Run()
 
 	l.Infof("opening debug configuration")
-	la, err := newLaunchArgs(pod, host, port, iteration, workspaceFolder).toJson()
+	la, err := newLaunchArgs(host, port, workspaceFolder).toJson()
 	if err != nil {
 		return err
 	}

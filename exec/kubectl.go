@@ -8,7 +8,8 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	v1 "k8s.io/api/apps/v1"
+	apps "k8s.io/api/apps/v1"
+	core "k8s.io/api/core/v1"
 )
 
 type KubectlCmd struct {
@@ -82,21 +83,20 @@ func (c KubectlCmd) ExposePod(pod string, host string, port int) *Cmd {
 		fmt.Sprintf("--port=%v", port), fmt.Sprintf("--external-ip=%v", host))
 }
 
-func (c KubectlCmd) ForwardPod(pod string, host string, port int) *Cmd {
-	// kubectl port-forward pods/mongo-75f59d57f4-4nd6q 28015:27017
-	return c.Args("port-forward", "pods/" + pod, strconv.Itoa(port) +":"+strconv.Itoa(port))
+func (c KubectlCmd) PortForwardPod(pod string, host string, port int) *Cmd {
+	return c.Args("port-forward", "pods/"+pod, strconv.Itoa(port)+":"+strconv.Itoa(port))
 }
 
 func (c KubectlCmd) DeleteService(service string) *Cmd {
 	return c.Args("delete", "service", service)
 }
 
-func (c KubectlCmd) GetDeployment(deployment string) (*v1.Deployment, error) {
+func (c KubectlCmd) GetDeployment(deployment string) (*apps.Deployment, error) {
 	out, err := c.Args("get", "deployment", deployment, "-o", "json").Run()
 	if err != nil {
 		return nil, err
 	}
-	var d v1.Deployment
+	var d apps.Deployment
 	if err := json.Unmarshal([]byte(out), &d); err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (c KubectlCmd) GetPods(selectors map[string]string) ([]string, error) {
 	return parseResources(out, "\n", "pod/")
 }
 
-func (c KubectlCmd) GetContainers(deployment v1.Deployment) []string {
+func (c KubectlCmd) GetContainers(deployment apps.Deployment) []string {
 	var containers []string
 	for _, c := range deployment.Spec.Template.Spec.Containers {
 		containers = append(containers, c.Name)
@@ -203,4 +203,42 @@ func parseResources(out, delimiter, prefix string) ([]string, error) {
 		res = append(res, strings.TrimPrefix(line, prefix))
 	}
 	return res, nil
+}
+
+func (c KubectlCmd) KillPidsOnPod(pod, container string, pids []string, murder bool) []error {
+	var errs []error
+	for _, pid := range pids {
+		cmd := []string{"kill"}
+		if murder {
+			cmd = append(cmd, "-s", "9")
+		}
+		cmd = append(cmd, pid)
+		_, errKill := c.ExecPod(pod, container, cmd).Run()
+		if errKill != nil {
+			errs = append(errs, errKill)
+		}
+	}
+	return errs
+}
+
+func (c KubectlCmd) GetDeploymentFromConfigMap(deployment, configMapKey string) (*apps.Deployment, error) {
+	out, err := c.GetConfigMapKey(deployment, configMapKey)
+	if err != nil {
+		return nil, err
+	}
+	var d apps.Deployment
+	if err := json.Unmarshal([]byte(out), &d); err != nil {
+		return nil, err
+	}
+	return &d, nil
+
+}
+
+func (_ KubectlCmd) GetContainerFromDeployment(container string, d *apps.Deployment) (*core.Container, error) {
+	for _, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == container {
+			return &c, nil
+		}
+	}
+	return nil, fmt.Errorf("no container %q found in deployment %q", container, d.Name)
 }
