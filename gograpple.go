@@ -7,13 +7,14 @@ import (
 )
 
 const (
-	devDeploymentPatchFile        = "deployment-patch.yaml"
-	defaultWaitTimeout            = "30s"
-	conditionContainersReady      = "condition=ContainersReady"
-	defaultPatchedLabel           = "dev-mode-patched"
-	defaultPatchImage             = "gograpple-patch:latest"
-	defaultConfigMapMount         = "/etc/config/mounted"
-	defaultConfigMapDeploymentKey = "deployment.json"
+	devDeploymentPatchFile           = "deployment-patch.yaml"
+	defaultWaitTimeout               = "30s"
+	conditionContainersReady         = "condition=ContainersReady"
+	defaultPatchedLabel              = "dev-mode-patched"
+	defaultPatchImageSuffix          = "-patch"
+	defaultConfigMapMount            = "/etc/config/mounted"
+	defaultConfigMapDeploymentKey    = "deployment.json"
+	defaultConfigMapDeploymentSuffix = "-patch"
 )
 
 type Grapple struct {
@@ -31,10 +32,10 @@ func NewGrapple(l *logrus.Entry, namespace, deployment string) (*Grapple, error)
 	g.goCmd = exec.NewGoCommand(l)
 	g.kubeCmd.Args("-n", namespace)
 
-	if err := g.validateNamespace(namespace); err != nil {
+	if err := g.kubeCmd.ValidateNamespace(namespace); err != nil {
 		return nil, err
 	}
-	if err := g.validateDeployment(namespace, deployment); err != nil {
+	if err := g.kubeCmd.ValidateDeployment(namespace, deployment); err != nil {
 		return nil, err
 	}
 

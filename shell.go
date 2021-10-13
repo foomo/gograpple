@@ -6,7 +6,7 @@ func (g Grapple) Shell(pod string) error {
 	if !g.isPatched() {
 		return fmt.Errorf("deployment not patched, stopping shell")
 	}
-	if err := g.validatePod(&pod); err != nil {
+	if err := g.kubeCmd.ValidatePod(g.deployment, &pod); err != nil {
 		return err
 	}
 	g.l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)

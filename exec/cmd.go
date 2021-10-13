@@ -2,6 +2,7 @@ package exec
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	goexec "os/exec"
@@ -24,14 +25,18 @@ type Cmd struct {
 	preStartFunc  func() error
 	postStartFunc func(p *os.Process) error
 	postEndFunc   func() error
+	chanStarted   chan struct{}
+	chanDone      chan struct{}
 }
 
 func NewCommand(l *logrus.Entry, name string) *Cmd {
 	return &Cmd{
-		l:       l,
-		command: []string{name},
-		wait:    true,
-		env:     os.Environ(),
+		l:           l,
+		command:     []string{name},
+		wait:        true,
+		env:         os.Environ(),
+		chanStarted: make(chan struct{}),
+		chanDone:    make(chan struct{}),
 	}
 }
 
@@ -105,8 +110,23 @@ func (c *Cmd) PostEnd(f func() error) *Cmd {
 	return c
 }
 
+func (c *Cmd) Started() <-chan struct{} {
+	return c.chanStarted
+}
+
+func (c *Cmd) Done() <-chan struct{} {
+	return c.chanDone
+}
+
 func (c *Cmd) Run() (string, error) {
-	cmd := goexec.Command(c.command[0], c.command[1:]...)
+	return c.run(goexec.Command(c.command[0], c.command[1:]...))
+}
+
+func (c *Cmd) RunCtx(ctx context.Context) (string, error) {
+	return c.run(goexec.CommandContext(ctx, c.command[0], c.command[1:]...))
+}
+
+func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	cmd.Env = append(os.Environ(), c.env...)
 	if c.cwd != "" {
 		cmd.Dir = c.cwd
@@ -138,6 +158,10 @@ func (c *Cmd) Run() (string, error) {
 		}
 	}
 
+	go func() {
+		c.chanStarted <- struct{}{}
+	}()
+
 	if c.wait {
 		if c.t != 0 {
 			timer := time.AfterFunc(c.t, func() {
@@ -157,6 +181,10 @@ func (c *Cmd) Run() (string, error) {
 			}
 		}
 	}
+
+	go func() {
+		c.chanDone <- struct{}{}
+	}()
 
 	return combinedBuf.String(), nil
 }

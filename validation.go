@@ -6,7 +6,33 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	v1 "k8s.io/api/apps/v1"
 )
+
+func ValidateImage(d v1.Deployment, container string, image, tag *string) error {
+	if *image == "" {
+		for _, c := range d.Spec.Template.Spec.Containers {
+			if container == c.Name {
+				colonPieces := strings.Split(c.Image, ":")
+				if len(colonPieces) < 2 {
+					// invalid
+					return fmt.Errorf("deployment image %q has invalid format", c.Image)
+				} else if len(colonPieces) > 2 {
+					// there might be a repo with a port in there
+					*image = strings.Join(colonPieces[:len(colonPieces)-1], ":")
+					*tag = colonPieces[len(colonPieces)-1]
+				} else {
+					// image:tag
+					*image = colonPieces[0]
+					*tag = colonPieces[1]
+				}
+				return nil
+			}
+		}
+	}
+	return nil
+}
 
 func ValidateMounts(wd string, ms []string) ([]Mount, error) {
 	var mounts []Mount
@@ -27,13 +53,6 @@ func ValidateMounts(wd string, ms []string) ([]Mount, error) {
 	}
 	return mounts, nil
 
-}
-
-func validateResource(resourceType, resource, suffix string, available []string) error {
-	if !stringIsInSlice(resource, available) {
-		return fmt.Errorf("%v %q not found %v, available: %v", resourceType, resource, suffix, strings.Join(available, ", "))
-	}
-	return nil
 }
 
 func ValidatePath(wd string, p *string) error {

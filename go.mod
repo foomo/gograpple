@@ -7,6 +7,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/magefile/mage v1.11.0 // indirect
+	github.com/pkg/errors v0.9.1
 	github.com/sirupsen/logrus v1.7.1
 	github.com/spf13/cobra v1.1.3
 	golang.org/x/net v0.0.0-20210119194325-5f4716e94777 // indirect

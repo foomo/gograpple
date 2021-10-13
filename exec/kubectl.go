@@ -2,6 +2,7 @@ package exec
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -241,4 +242,74 @@ func (_ KubectlCmd) GetContainerFromDeployment(container string, d *apps.Deploym
 		}
 	}
 	return nil, fmt.Errorf("no container %q found in deployment %q", container, d.Name)
+}
+
+func (c KubectlCmd) GetPIDsOf(pod, container, process string) (pids []string, err error) {
+	rawPids, errExec := c.ExecPod(pod, container, []string{"pidof", process}).Run()
+	if errExec != nil {
+		if errExec.Error() == "exit status 1" {
+			return []string{}, nil
+		}
+		return nil, errors.New("could not get pid of process: " + errExec.Error())
+	}
+	stripped := []string{}
+	for _, rawPid := range strings.Split(rawPids, " ") {
+		stripped = append(stripped, strings.Trim(rawPid, "\n"))
+	}
+	return stripped, nil
+}
+
+func (c KubectlCmd) ValidateNamespace(namespace string) error {
+	available, err := c.GetNamespaces()
+	if err != nil {
+		return err
+	}
+	return validateResource("namespace", namespace, "", available)
+}
+
+func (c KubectlCmd) ValidateDeployment(namespace, deployment string) error {
+	available, err := c.GetDeployments()
+	if err != nil {
+		return err
+	}
+	return validateResource("deployment", deployment, fmt.Sprintf("for namespace %q", namespace), available)
+}
+
+func (c KubectlCmd) ValidatePod(d apps.Deployment, pod *string) error {
+	if *pod == "" {
+		var err error
+		*pod, err = c.GetMostRecentPodBySelectors(d.Spec.Selector.MatchLabels)
+		if err != nil || *pod == "" {
+			return err
+		}
+		return nil
+	}
+	available, err := c.GetPods(d.Spec.Selector.MatchLabels)
+	if err != nil {
+		return err
+	}
+	return validateResource("pod", *pod, fmt.Sprintf("for deployment %q", d.Name), available)
+}
+
+func (c KubectlCmd) ValidateContainer(d apps.Deployment, container *string) error {
+	if *container == "" {
+		*container = d.Name
+	}
+	return validateResource("container", *container, fmt.Sprintf("for deployment %q", d.Name), c.GetContainers(d))
+}
+
+func validateResource(resourceType, resource, suffix string, available []string) error {
+	if !stringIsInSlice(resource, available) {
+		return fmt.Errorf("%v %q not found %v, available: %v", resourceType, resource, suffix, strings.Join(available, ", "))
+	}
+	return nil
+}
+
+func stringIsInSlice(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
 }
