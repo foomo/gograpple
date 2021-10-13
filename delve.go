@@ -1,6 +1,7 @@
 package gograpple
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path"
@@ -9,16 +10,17 @@ import (
 	"time"
 
 	"github.com/foomo/gograpple/delve"
+	"github.com/sirupsen/logrus"
 )
 
 const delveBin = "dlv"
 
 func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host string, port int, delveContinue, vscode bool) error {
 	// validate k8s resources for delve session
-	if err := g.validatePod(&pod); err != nil {
+	if err := g.kubeCmd.ValidatePod(g.deployment, &pod); err != nil {
 		return err
 	}
-	if err := g.validateContainer(&container); err != nil {
+	if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
 		return err
 	}
 	if !g.isPatched() {
@@ -27,7 +29,7 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 	// populate bin args if empty
 	if len(binArgs) == 0 {
 		var err error
-		d, err := g.kubeCmd.GetDeploymentFromConfigMap(g.deployment.Name, defaultConfigMapDeploymentKey)
+		d, err := g.kubeCmd.GetDeploymentFromConfigMap(g.DeploymentConfigMapName(), defaultConfigMapDeploymentKey)
 		if err != nil {
 			return err
 		}
@@ -43,48 +45,47 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		return fmt.Errorf("couldnt find go.mod path for source %q", sourcePath)
 	}
 
-	delveServer := delve.NewKubeDelveServer(g.l, host, port)
-	return g.registerInterrupt(2*time.Second).wait(
-		func() error {
-			g.onExit(delveServer, pod, container)
-			return nil
-		},
-		func() error {
-			// on(Re)Load
-			// run pre-start cleanup
-			if err := g.cleanupDelve(pod, container); err != nil {
-				return err
+	RunWithInterrupt(g.l, func(ctx context.Context) {
+		// run pre-start cleanup
+		clog := g.componentLog("cleanup")
+		clog.Info("running pre-start cleanup")
+		if err := g.cleanupPIDs(ctx, pod, container); err != nil {
+			clog.Error(err)
+			return
+		}
+		// deploy bin
+		dlog := g.componentLog("deploy")
+		dlog.Info("building and deploying bin")
+		if err := g.deployBin(ctx, pod, container, goModPath, sourcePath); err != nil {
+			dlog.Error(err)
+			return
+		}
+		// start delve server
+		dslog := g.componentLog("server")
+		dslog.Infof("starting delve server on %v:%v", host, port)
+		ds := delve.NewKubeDelveServer(dslog, g.deployment.Namespace, host, port)
+		ds.StartNoWait(ctx, pod, container, g.binDestination(), delveContinue, binArgs)
+		// port forward to pod with delve server
+		dclog := g.componentLog("client")
+		g.portForwardDelve(dclog, ctx, pod, host, port)
+		// check server state with delve client
+		if err := g.checkDelveConnection(dclog, ctx, 10, host, port); err != nil {
+			dclog.WithError(err).Error("couldnt connect to delver server")
+			return
+		}
+		// launch vscode
+		if vscode {
+			vlog := g.componentLog("vscode")
+			if err := launchVSCode(ctx, vlog, goModPath, host, port, 5); err != nil {
+				vlog.WithError(err).Error("couldnt launch vscode")
 			}
-			// deploy bin
-			if err := g.deployBin(pod, container, goModPath, sourcePath); err != nil {
-				return err
-			}
-			// exec delve server and port-forward to pod
-			go delveServer.Start(pod, container, g.binDestination(), delveContinue, binArgs)
-			// check server state with delve client
-			go g.checkDelveConnection(host, port)
-			// start vscode
-			if vscode {
-				if err := launchVSCode(g.l, goModPath, host, port, 5); err != nil {
-					return err
-				}
-			}
-			defer g.onExit(delveServer, pod, container)
-			return nil
-		},
-	)
+		}
+	})
+	defer g.cleanupPIDs(context.Background(), pod, container)
+	return nil
 }
-
-func (g Grapple) onExit(ds *delve.KubeDelveServer, pod, container string) {
-	// onExit
-	// try stopping the delve server regularly
-	if err := ds.Stop(); err != nil {
-		g.l.WithError(err).Warn("could not stop delve regularly")
-	}
-	// kill the remaining pids
-	if err := g.cleanupDelve(pod, container); err != nil {
-		g.l.WithError(err).Warn("could not cleanup delve")
-	}
+func (g Grapple) componentLog(name string) *logrus.Entry {
+	return g.l.WithField("component", name)
 }
 
 func (g Grapple) binName() string {
@@ -95,21 +96,20 @@ func (g Grapple) binDestination() string {
 	return "/" + g.binName()
 }
 
-func (g Grapple) cleanupDelve(pod, container string) error {
+func (g Grapple) cleanupPIDs(ctx context.Context, pod, container string) error {
 	// get pids of delve and app were debugging
-	g.l.Info("killing debug processes")
-	binPids, errBinPids := g.getPIDsOf(pod, container, g.binName())
+	binPids, errBinPids := g.kubeCmd.GetPIDsOf(pod, container, g.binName())
 	if errBinPids != nil {
 		return errBinPids
 	}
-	delvePids, errDelvePids := g.getPIDsOf(pod, container, delveBin)
+	delvePids, errDelvePids := g.kubeCmd.GetPIDsOf(pod, container, delveBin)
 	if errDelvePids != nil {
 		return errDelvePids
 	}
 	// kill pids directly on pod container
 	maxTries := 10
 	pids := append(binPids, delvePids...)
-	return tryCall(g.l, maxTries, time.Millisecond*200, func(i int) error {
+	return tryCallWithContext(ctx, maxTries, time.Millisecond*200, func(i int) error {
 		killErrs := g.kubeCmd.KillPidsOnPod(pod, container, pids, true)
 		if len(killErrs) == 0 {
 			return nil
@@ -118,10 +118,9 @@ func (g Grapple) cleanupDelve(pod, container string) error {
 	})
 }
 
-func (g Grapple) deployBin(pod, container, goModPath, sourcePath string) error {
+func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourcePath string) error {
+	// build bin
 	binSource := path.Join(os.TempDir(), g.binName())
-	g.l.Infof("building %q for debug", sourcePath)
-
 	var relInputs []string
 	inputInfo, errInputInfo := os.Stat(sourcePath)
 	if errInputInfo != nil {
@@ -141,27 +140,49 @@ func (g Grapple) deployBin(pod, container, goModPath, sourcePath string) error {
 		relInputs = append(relInputs, strings.TrimPrefix(sourcePath, goModPath+string(filepath.Separator)))
 	}
 
-	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, `-gcflags="all=-N -l"`).Env("GOOS=linux").Run()
+	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, `-gcflags="all=-N -l"`).Env("GOOS=linux").RunCtx(ctx)
 	if errBuild != nil {
 		return errBuild
 	}
-
-	g.l.Infof("copying binary to pod %v", pod)
-	_, errCopyToPod := g.kubeCmd.CopyToPod(pod, container, binSource, g.binDestination()).Run()
+	// copy bin to pod
+	_, errCopyToPod := g.kubeCmd.CopyToPod(pod, container, binSource, g.binDestination()).RunCtx(ctx)
 	return errCopyToPod
 }
 
-func (g Grapple) checkDelveConnection(host string, port int) error {
-	return tryCall(g.l, 50, 200*time.Millisecond, func(i int) error {
-		delveClient, err := delve.NewKubeDelveClient(host, port, 3*time.Second)
+func (g Grapple) portForwardDelve(l *logrus.Entry, ctx context.Context, pod, host string, port int) {
+	l.Info("port-forwarding pod for delve server")
+	cmd := g.kubeCmd.PortForwardPod(pod, host, port)
+	go func() {
+		_, err := cmd.RunCtx(ctx)
+		if err != nil && err.Error() != "signal: killed" {
+			l.WithError(err).Errorf("port-forwarding %v pod failed", pod)
+		}
+	}()
+	<-cmd.Started()
+}
+
+func (g Grapple) checkDelveConnection(l *logrus.Entry, ctx context.Context, tries int, host string, port int) error {
+	time.Sleep(1 * time.Second) // allow delve to become available
+	err := tryCallWithContext(ctx, tries, 1*time.Second, func(i int) error {
+		l.Infof("connecting to %v:%v (%d/%d)", host, port, i, tries)
+		dc, err := delve.NewKubeDelveClient(ctx, host, port)
 		if err != nil {
-			g.l.WithError(err).Warn("couldnt connect to delve server")
+			l.WithError(err).Warn("couldnt connect to delve server")
 			return err
 		}
-		if err := delveClient.ValidateState(); err != nil {
-			g.l.WithError(err).Warn("couldnt get running state from delve server")
+		defer func() {
+			if err := dc.Close(); err != nil {
+				l.WithError(err).Warn("couldnt close delve client")
+			}
+		}()
+		if err := dc.ValidateState(); err != nil {
+			l.WithError(err).Warn("couldnt get running state from delve server")
 			return err
 		}
 		return nil
 	})
+	if err == nil {
+		l.Infof("delve server connection and state ok")
+	}
+	return err
 }

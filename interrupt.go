@@ -1,72 +1,37 @@
 package gograpple
 
 import (
+	"context"
 	"os"
 	"os/signal"
 	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
-type Interrupt struct {
-	signalChan chan os.Signal
-	exitChan   chan bool
-	reloadChan chan bool
-}
-
-func (g Grapple) registerInterrupt(resetDuration time.Duration) *Interrupt {
-	ir := &Interrupt{}
-	ir.signalChan = make(chan os.Signal, 1)
-	signal.Notify(ir.signalChan)
-	ir.exitChan = make(chan bool)
-	ir.reloadChan = make(chan bool)
-	exiting := false
-	readyToReset := false
-	i := 0
-	go func() {
-		for {
-			select {
-			case <-time.After(resetDuration):
-				if readyToReset {
-					g.l.Info("resetting termination timer")
-					readyToReset = false
-				}
-				i = 0
-			case sig := <-ir.signalChan:
-				switch sig {
-				case os.Interrupt:
-					g.l.Infof("received interrupt signal, trigger one more interrupt within %v to terminate", resetDuration)
-					readyToReset = true
-					if exiting {
-						g.l.Warn("already exiting - ignoring interupt")
-						continue
-					}
-					if i == 0 {
-						g.l.Info("triggering reload")
-						ir.reloadChan <- true
-					} else {
-						g.l.Info("triggering exit")
-						exiting = true
-						ir.exitChan <- true
-					}
-					i++
-				}
-			}
-		}
-	}()
-	return ir
-}
-
-func (ir *Interrupt) wait(onExit func() error, onLoad func() error) error {
-	// initial load
-	ir.reloadChan <- true
-	// block until an event is triggered
+func RunWithInterrupt(l *logrus.Entry, callback func(ctx context.Context)) {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
+	durReload := 3 * time.Second
 	for {
+		ctx, cancelCtx := context.WithCancel(context.Background())
+		// do stuff
+		go callback(ctx)
 		select {
-		case <-ir.exitChan:
-			return onExit()
-		default:
-		case <-ir.reloadChan:
-			if err := onLoad(); err != nil {
-				return err
+		case <-signalChan: // first signal
+			l.Info("-")
+			l.Infof("interrupt received, trigger one more within %v to terminate", durReload)
+			cancelCtx()
+			select {
+			case <-time.After(durReload): // reloads durReload after first signal
+				l.Info("-")
+				l.Info("reloading")
+			case <-signalChan: // second signal, hard exit
+				l.Info("-")
+				l.Info("terminating")
+				signal.Stop(signalChan)
+				// exit loop
+				return
 			}
 		}
 	}

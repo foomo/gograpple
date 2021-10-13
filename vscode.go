@@ -1,6 +1,7 @@
 package gograpple
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -50,7 +51,7 @@ func (la *launchArgs) toJson() (string, error) {
 	return string(bytes), nil
 }
 
-func launchVSCode(l *logrus.Entry, goModDir, host string, port, tries int) error {
+func launchVSCode(ctx context.Context, l *logrus.Entry, goModDir, host string, port, tries int) error {
 	openFile := goModDir
 	workspaceFolder := "${workspaceFolder}"
 	// is there a workspace in that dir
@@ -66,7 +67,7 @@ func launchVSCode(l *logrus.Entry, goModDir, host string, port, tries int) error
 	}
 
 	exec.NewCommand(l, "code").Args(openFile).PostEnd(func() error {
-		return tryCall(l, tries, 200*time.Millisecond, func(i int) error {
+		return tryCallWithContext(ctx, tries, 200*time.Millisecond, func(i int) error {
 			l.Infof("waiting for vscode status (%v/%v)", i, tries)
 			_, err := exec.NewCommand(l, "code").Args("-s").Run()
 			return err
@@ -78,7 +79,7 @@ func launchVSCode(l *logrus.Entry, goModDir, host string, port, tries int) error
 	if err != nil {
 		return err
 	}
-	_, err = runOpen(l, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+url.QueryEscape(la))
+	_, err = Open(l, ctx, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+url.QueryEscape(la))
 	if err != nil {
 		return err
 	}

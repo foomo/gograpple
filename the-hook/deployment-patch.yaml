@@ -22,7 +22,7 @@ spec:
       volumes:
         - name: patch-configmap
           configMap:
-            name: {{ .Deployment }}
+            name: {{ .Deployment }}-patch
         {{ range $i, $mount := .Mounts }}
         - name: "patch-mount-{{ $i }}"
           hostPath:
