@@ -13,7 +13,7 @@ type HostPort struct {
 	Port int
 }
 
-func newHostPort(host string, port int) *HostPort {
+func NewHostPort(host string, port int) *HostPort {
 	addr, err := gograpple.CheckTCPConnection(host, port)
 	if err == nil {
 		host = addr.IP.String()
@@ -56,7 +56,7 @@ type StringList struct {
 	items     []string
 }
 
-func newStringList(separator string) *StringList {
+func NewStringList(separator string) *StringList {
 	return &StringList{separator: separator}
 }
 
