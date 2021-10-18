@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	goexec "os/exec"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -21,7 +20,7 @@ type Cmd struct {
 	stdoutWriters []io.Writer
 	stderrWriters []io.Writer
 	wait          bool
-	t             time.Duration
+	// t             time.Duration
 	preStartFunc  func() error
 	postStartFunc func(p *os.Process) error
 	postEndFunc   func() error
@@ -29,9 +28,8 @@ type Cmd struct {
 	chanDone      chan struct{}
 }
 
-func NewCommand(l *logrus.Entry, name string) *Cmd {
+func NewCommand(name string) *Cmd {
 	return &Cmd{
-		l:           l,
 		command:     []string{name},
 		wait:        true,
 		env:         os.Environ(),
@@ -85,11 +83,6 @@ func (c *Cmd) Stderr(w io.Writer) *Cmd {
 	return c
 }
 
-func (c *Cmd) Timeout(t time.Duration) *Cmd {
-	c.t = t
-	return c
-}
-
 func (c *Cmd) NoWait() *Cmd {
 	c.wait = false
 	return c
@@ -110,20 +103,25 @@ func (c *Cmd) PostEnd(f func() error) *Cmd {
 	return c
 }
 
+func (c *Cmd) Logger(l *logrus.Entry) *Cmd {
+	c.l = l
+	return c
+}
+
+// func (c *Cmd) Run() (string, error) {
+// 	return c.run(goexec.Command(c.command[0], c.command[1:]...))
+// }
+
+func (c *Cmd) Run(ctx context.Context) (string, error) {
+	return c.run(goexec.CommandContext(ctx, c.command[0], c.command[1:]...))
+}
+
 func (c *Cmd) Started() <-chan struct{} {
 	return c.chanStarted
 }
 
 func (c *Cmd) Done() <-chan struct{} {
 	return c.chanDone
-}
-
-func (c *Cmd) Run() (string, error) {
-	return c.run(goexec.Command(c.command[0], c.command[1:]...))
-}
-
-func (c *Cmd) RunCtx(ctx context.Context) (string, error) {
-	return c.run(goexec.CommandContext(ctx, c.command[0], c.command[1:]...))
 }
 
 func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
@@ -134,11 +132,12 @@ func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	c.l.Tracef("executing %q", cmd.String())
 
 	combinedBuf := new(bytes.Buffer)
-	traceWriter := c.l.WriterLevel(logrus.TraceLevel)
-	warnWriter := c.l.WriterLevel(logrus.WarnLevel)
-
-	c.stdoutWriters = append(c.stdoutWriters, combinedBuf, traceWriter)
-	c.stderrWriters = append(c.stderrWriters, combinedBuf, warnWriter)
+	if c.l != nil {
+		traceWriter := c.l.WriterLevel(logrus.TraceLevel)
+		warnWriter := c.l.WriterLevel(logrus.WarnLevel)
+		c.stdoutWriters = append(c.stdoutWriters, combinedBuf, traceWriter)
+		c.stderrWriters = append(c.stderrWriters, combinedBuf, warnWriter)
+	}
 	cmd.Stdout = io.MultiWriter(c.stdoutWriters...)
 	cmd.Stderr = io.MultiWriter(c.stderrWriters...)
 
@@ -163,17 +162,8 @@ func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	}()
 
 	if c.wait {
-		if c.t != 0 {
-			timer := time.AfterFunc(c.t, func() {
-				cmd.Process.Kill()
-			})
-			defer timer.Stop()
-		}
-
 		if err := cmd.Wait(); err != nil {
-			if c.t == 0 {
-				return "", err
-			}
+			return "", err
 		}
 		if c.postEndFunc != nil {
 			if err := c.postEndFunc(); err != nil {

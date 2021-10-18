@@ -15,9 +15,11 @@ import (
 
 const delveBin = "dlv"
 
-func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host string, port int, delveContinue, vscode bool) error {
+func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host string,
+	port int, delveContinue, vscode bool) error {
+	validateCtx := context.Background()
 	// validate k8s resources for delve session
-	if err := g.kubeCmd.ValidatePod(g.deployment, &pod); err != nil {
+	if err := g.kubeCmd.ValidatePod(validateCtx, g.deployment, &pod); err != nil {
 		return err
 	}
 	if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
@@ -29,7 +31,8 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 	// populate bin args if empty
 	if len(binArgs) == 0 {
 		var err error
-		d, err := g.kubeCmd.GetDeploymentFromConfigMap(g.DeploymentConfigMapName(), defaultConfigMapDeploymentKey)
+		d, err := g.kubeCmd.GetDeploymentFromConfigMap(validateCtx, g.DeploymentConfigMapName(),
+			defaultConfigMapDeploymentKey)
 		if err != nil {
 			return err
 		}
@@ -98,11 +101,11 @@ func (g Grapple) binDestination() string {
 
 func (g Grapple) cleanupPIDs(ctx context.Context, pod, container string) error {
 	// get pids of delve and app were debugging
-	binPids, errBinPids := g.kubeCmd.GetPIDsOf(pod, container, g.binName())
+	binPids, errBinPids := g.kubeCmd.GetPIDsOf(ctx, pod, container, g.binName())
 	if errBinPids != nil {
 		return errBinPids
 	}
-	delvePids, errDelvePids := g.kubeCmd.GetPIDsOf(pod, container, delveBin)
+	delvePids, errDelvePids := g.kubeCmd.GetPIDsOf(ctx, pod, container, delveBin)
 	if errDelvePids != nil {
 		return errDelvePids
 	}
@@ -110,7 +113,7 @@ func (g Grapple) cleanupPIDs(ctx context.Context, pod, container string) error {
 	maxTries := 10
 	pids := append(binPids, delvePids...)
 	return tryCallWithContext(ctx, maxTries, time.Millisecond*200, func(i int) error {
-		killErrs := g.kubeCmd.KillPidsOnPod(pod, container, pids, true)
+		killErrs := g.kubeCmd.KillPidsOnPod(ctx, pod, container, pids, true)
 		if len(killErrs) == 0 {
 			return nil
 		}
@@ -132,7 +135,8 @@ func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourc
 		} else {
 			for _, file := range files {
 				if path.Ext(file.Name()) == ".go" {
-					relInputs = append(relInputs, strings.TrimPrefix(path.Join(sourcePath, file.Name()), goModPath+string(filepath.Separator)))
+					relInputs = append(relInputs, strings.TrimPrefix(path.Join(sourcePath,
+						file.Name()), goModPath+string(filepath.Separator)))
 				}
 			}
 		}
@@ -140,12 +144,12 @@ func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourc
 		relInputs = append(relInputs, strings.TrimPrefix(sourcePath, goModPath+string(filepath.Separator)))
 	}
 
-	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, `-gcflags="all=-N -l"`).Env("GOOS=linux").RunCtx(ctx)
+	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, `-gcflags="all=-N -l"`).Env("GOOS=linux").Run(ctx)
 	if errBuild != nil {
 		return errBuild
 	}
 	// copy bin to pod
-	_, errCopyToPod := g.kubeCmd.CopyToPod(pod, container, binSource, g.binDestination()).RunCtx(ctx)
+	_, errCopyToPod := g.kubeCmd.CopyToPod(pod, container, binSource, g.binDestination()).Run(ctx)
 	return errCopyToPod
 }
 
@@ -153,7 +157,7 @@ func (g Grapple) portForwardDelve(l *logrus.Entry, ctx context.Context, pod, hos
 	l.Info("port-forwarding pod for delve server")
 	cmd := g.kubeCmd.PortForwardPod(pod, host, port)
 	go func() {
-		_, err := cmd.RunCtx(ctx)
+		_, err := cmd.Run(ctx)
 		if err != nil && err.Error() != "signal: killed" {
 			l.WithError(err).Errorf("port-forwarding %v pod failed", pod)
 		}

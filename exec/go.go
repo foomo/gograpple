@@ -1,15 +1,11 @@
 package exec
 
-import (
-	"github.com/sirupsen/logrus"
-)
-
 type GoCmd struct {
 	Cmd
 }
 
-func NewGoCommand(l *logrus.Entry) *GoCmd {
-	return &GoCmd{*NewCommand(l, "go")}
+func NewGoCommand() *GoCmd {
+	return &GoCmd{*NewCommand("go")}
 }
 
 func (c GoCmd) Build(workDir, output string, inputs []string, flags ...string) *Cmd {

@@ -26,8 +26,8 @@ func (kds KubeDelveServer) Port() int {
 }
 
 func NewKubeDelveServer(l *logrus.Entry, namespace, host string, port int) *KubeDelveServer {
-	kubectl := exec.NewKubectlCommand(l)
-	kubectl.Args("-n", namespace)
+	kubectl := exec.NewKubectlCommand()
+	kubectl.Logger(l).Args("-n", namespace)
 	return &KubeDelveServer{host, port, kubectl, nil}
 }
 
@@ -38,7 +38,7 @@ func (kds *KubeDelveServer) StartNoWait(ctx context.Context, pod, container stri
 		func(p *os.Process) error {
 			kds.process = p
 			return nil
-		}).NoWait().RunCtx(ctx)
+		}).NoWait().Run(ctx)
 	<-cmd.Started()
 }
 
@@ -50,7 +50,7 @@ func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string, bi
 		func(p *os.Process) error {
 			kds.process = p
 			return nil
-		}).RunCtx(ctx)
+		}).Run(ctx)
 	return errors.WithMessage(err, out)
 }
 

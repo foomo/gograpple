@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sirupsen/logrus"
 	apps "k8s.io/api/apps/v1"
 	core "k8s.io/api/core/v1"
 )
@@ -17,8 +17,8 @@ type KubectlCmd struct {
 	Cmd
 }
 
-func NewKubectlCommand(l *logrus.Entry) *KubectlCmd {
-	return &KubectlCmd{*NewCommand(l, "kubectl")}
+func NewKubectlCommand() *KubectlCmd {
+	return &KubectlCmd{*NewCommand("kubectl")}
 }
 
 func (c KubectlCmd) RollbackDeployment(deployment string) *Cmd {
@@ -30,13 +30,14 @@ func (c KubectlCmd) WaitForRollout(deployment, timeout string) *Cmd {
 		"-w", "--timeout", timeout)
 }
 
-func (c KubectlCmd) GetMostRecentPodBySelectors(selectors map[string]string) (string, error) {
+func (c KubectlCmd) GetMostRecentPodBySelectors(ctx context.Context,
+	selectors map[string]string) (string, error) {
 	var selector []string
 	for k, v := range selectors {
 		selector = append(selector, fmt.Sprintf("%v=%v", k, v))
 	}
 	out, err := c.Args("--selector", strings.Join(selector, ","),
-		"get", "pods", "--sort-by=.status.startTime", "-o", "name").Run()
+		"get", "pods", "--sort-by=.status.startTime", "-o", "name").Run(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -92,8 +93,8 @@ func (c KubectlCmd) DeleteService(service string) *Cmd {
 	return c.Args("delete", "service", service)
 }
 
-func (c KubectlCmd) GetDeployment(deployment string) (*apps.Deployment, error) {
-	out, err := c.Args("get", "deployment", deployment, "-o", "json").Run()
+func (c KubectlCmd) GetDeployment(ctx context.Context, deployment string) (*apps.Deployment, error) {
+	out, err := c.Args("get", "deployment", deployment, "-o", "json").Run(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -104,30 +105,30 @@ func (c KubectlCmd) GetDeployment(deployment string) (*apps.Deployment, error) {
 	return &d, nil
 }
 
-func (c KubectlCmd) GetNamespaces() ([]string, error) {
-	out, err := c.Args("get", "namespace", "-o", "name").Run()
+func (c KubectlCmd) GetNamespaces(ctx context.Context) ([]string, error) {
+	out, err := c.Args("get", "namespace", "-o", "name").Run(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return parseResources(out, "\n", "namespace/")
 }
 
-func (c KubectlCmd) GetDeployments() ([]string, error) {
-	out, err := c.Args("get", "deployment", "-o", "name").Run()
+func (c KubectlCmd) GetDeployments(ctx context.Context) ([]string, error) {
+	out, err := c.Args("get", "deployment", "-o", "name").Run(ctx)
 	if err != nil {
 		return nil, err
 	}
 	return parseResources(out, "\n", "deployment.apps/")
 }
 
-func (c KubectlCmd) GetPods(selectors map[string]string) ([]string, error) {
+func (c KubectlCmd) GetPods(ctx context.Context, selectors map[string]string) ([]string, error) {
 	var selector []string
 	for k, v := range selectors {
 		selector = append(selector, fmt.Sprintf("%v=%v", k, v))
 	}
 	out, err := c.Args("--selector", strings.Join(selector, ","),
 		"get", "pods", "--sort-by=.status.startTime",
-		"-o", "name").Run()
+		"-o", "name").Run(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -142,8 +143,8 @@ func (c KubectlCmd) GetContainers(deployment apps.Deployment) []string {
 	return containers
 }
 
-func (c KubectlCmd) GetPodsByLabels(labels []string) ([]string, error) {
-	out, err := c.Args("get", "pods", "-l", strings.Join(labels, ","), "-o", "name", "-A").Run()
+func (c KubectlCmd) GetPodsByLabels(ctx context.Context, labels []string) ([]string, error) {
+	out, err := c.Args("get", "pods", "-l", strings.Join(labels, ","), "-o", "name", "-A").Run(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -154,27 +155,27 @@ func (c KubectlCmd) RestartDeployment(deployment string) *Cmd {
 	return c.Args("rollout", "restart", fmt.Sprintf("deployment/%v", deployment))
 }
 
-func (c KubectlCmd) CreateConfigMapFromFile(name, path string) (string, error) {
-	return c.Args("create", "configmap", name, "--from-file", path).Run()
+func (c KubectlCmd) CreateConfigMapFromFile(name, path string) *Cmd {
+	return c.Args("create", "configmap", name, "--from-file", path)
 }
 
-func (c KubectlCmd) CreateConfigMap(name string, keyMap map[string]string) (string, error) {
+func (c KubectlCmd) CreateConfigMap(name string, keyMap map[string]string) *KubectlCmd {
 	c.Args("create", "configmap", name)
 	for key, value := range keyMap {
 		c.Args(fmt.Sprintf("--from-literal=%v=%v", key, value))
 	}
-	return c.Run()
+	return &c
 }
 
-func (c KubectlCmd) DeleteConfigMap(name string) (string, error) {
-	return c.Args("delete", "configmap", name).Run()
+func (c KubectlCmd) DeleteConfigMap(name string) *Cmd {
+	return c.Args("delete", "configmap", name)
 }
 
-func (c KubectlCmd) GetConfigMapKey(name, key string) (string, error) {
+func (c KubectlCmd) GetConfigMapKey(ctx context.Context, name, key string) (string, error) {
 	key = strings.ReplaceAll(key, ".", "\\.")
 	// jsonpath map key is not very fond of dots
 	out, err := c.Args("get", "configmap", name, "-o",
-		fmt.Sprintf("jsonpath={.data.%v}", key)).Run()
+		fmt.Sprintf("jsonpath={.data.%v}", key)).Run(ctx)
 	if err != nil {
 		return out, err
 	}
@@ -206,7 +207,7 @@ func parseResources(out, delimiter, prefix string) ([]string, error) {
 	return res, nil
 }
 
-func (c KubectlCmd) KillPidsOnPod(pod, container string, pids []string, murder bool) []error {
+func (c KubectlCmd) KillPidsOnPod(ctx context.Context, pod, container string, pids []string, murder bool) []error {
 	var errs []error
 	for _, pid := range pids {
 		cmd := []string{"kill"}
@@ -214,7 +215,7 @@ func (c KubectlCmd) KillPidsOnPod(pod, container string, pids []string, murder b
 			cmd = append(cmd, "-s", "9")
 		}
 		cmd = append(cmd, pid)
-		_, errKill := c.ExecPod(pod, container, cmd).Run()
+		_, errKill := c.ExecPod(pod, container, cmd).Run(ctx)
 		if errKill != nil {
 			errs = append(errs, errKill)
 		}
@@ -222,8 +223,8 @@ func (c KubectlCmd) KillPidsOnPod(pod, container string, pids []string, murder b
 	return errs
 }
 
-func (c KubectlCmd) GetDeploymentFromConfigMap(deployment, configMapKey string) (*apps.Deployment, error) {
-	out, err := c.GetConfigMapKey(deployment, configMapKey)
+func (c KubectlCmd) GetDeploymentFromConfigMap(ctx context.Context, deployment, configMapKey string) (*apps.Deployment, error) {
+	out, err := c.GetConfigMapKey(ctx, deployment, configMapKey)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +245,8 @@ func (_ KubectlCmd) GetContainerFromDeployment(container string, d *apps.Deploym
 	return nil, fmt.Errorf("no container %q found in deployment %q", container, d.Name)
 }
 
-func (c KubectlCmd) GetPIDsOf(pod, container, process string) (pids []string, err error) {
-	rawPids, errExec := c.ExecPod(pod, container, []string{"pidof", process}).Run()
+func (c KubectlCmd) GetPIDsOf(ctx context.Context, pod, container, process string) (pids []string, err error) {
+	rawPids, errExec := c.ExecPod(pod, container, []string{"pidof", process}).Run(ctx)
 	if errExec != nil {
 		if errExec.Error() == "exit status 1" {
 			return []string{}, nil
@@ -259,32 +260,32 @@ func (c KubectlCmd) GetPIDsOf(pod, container, process string) (pids []string, er
 	return stripped, nil
 }
 
-func (c KubectlCmd) ValidateNamespace(namespace string) error {
-	available, err := c.GetNamespaces()
+func (c KubectlCmd) ValidateNamespace(ctx context.Context, namespace string) error {
+	available, err := c.GetNamespaces(ctx)
 	if err != nil {
 		return err
 	}
 	return validateResource("namespace", namespace, "", available)
 }
 
-func (c KubectlCmd) ValidateDeployment(namespace, deployment string) error {
-	available, err := c.GetDeployments()
+func (c KubectlCmd) ValidateDeployment(ctx context.Context, namespace, deployment string) error {
+	available, err := c.GetDeployments(ctx)
 	if err != nil {
 		return err
 	}
 	return validateResource("deployment", deployment, fmt.Sprintf("for namespace %q", namespace), available)
 }
 
-func (c KubectlCmd) ValidatePod(d apps.Deployment, pod *string) error {
+func (c KubectlCmd) ValidatePod(ctx context.Context, d apps.Deployment, pod *string) error {
 	if *pod == "" {
 		var err error
-		*pod, err = c.GetMostRecentPodBySelectors(d.Spec.Selector.MatchLabels)
+		*pod, err = c.GetMostRecentPodBySelectors(ctx, d.Spec.Selector.MatchLabels)
 		if err != nil || *pod == "" {
 			return err
 		}
 		return nil
 	}
-	available, err := c.GetPods(d.Spec.Selector.MatchLabels)
+	available, err := c.GetPods(ctx, d.Spec.Selector.MatchLabels)
 	if err != nil {
 		return err
 	}

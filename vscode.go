@@ -66,13 +66,13 @@ func launchVSCode(ctx context.Context, l *logrus.Entry, goModDir, host string, p
 		}
 	}
 
-	exec.NewCommand(l, "code").Args(openFile).PostEnd(func() error {
+	exec.NewCommand("code").Logger(l).Args(openFile).PostEnd(func() error {
 		return tryCallWithContext(ctx, tries, 200*time.Millisecond, func(i int) error {
 			l.Infof("waiting for vscode status (%v/%v)", i, tries)
-			_, err := exec.NewCommand(l, "code").Args("-s").Run()
+			_, err := exec.NewCommand("code").Logger(l).Args("-s").Run(ctx)
 			return err
 		})
-	}).Run()
+	}).Run(ctx)
 
 	l.Infof("opening debug configuration")
 	la, err := newLaunchArgs(host, port, workspaceFolder).toJson()

@@ -40,15 +40,15 @@ func Open(l *logrus.Entry, ctx context.Context, path string) (string, error) {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "linux":
-		cmd = exec.NewCommand(l, "xdg-open").Args(path)
+		cmd = exec.NewCommand("xdg-open").Logger(l).Args(path)
 	case "windows":
-		cmd = exec.NewCommand(l, "rundll32").Args("url.dll,FileProtocolHandler", path)
+		cmd = exec.NewCommand("rundll32").Logger(l).Args("url.dll,FileProtocolHandler", path)
 	case "darwin":
-		cmd = exec.NewCommand(l, "open").Args(path)
+		cmd = exec.NewCommand("open").Logger(l).Args(path)
 	default:
 		return "", fmt.Errorf("unsupported platform")
 	}
-	return cmd.RunCtx(ctx)
+	return cmd.Run(ctx)
 }
 
 func TryCall(tries int, waitBetweenAttempts time.Duration, f func(i int) error) error {

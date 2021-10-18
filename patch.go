@@ -1,6 +1,7 @@
 package gograpple
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -35,9 +36,10 @@ func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mo
 }
 
 func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error {
+	ctx := context.Background()
 	if g.isPatched() {
 		g.l.Warn("deployment already patched, rolling back first")
-		if err := g.rollbackUntilUnpatched(); err != nil {
+		if err := g.rollbackUntilUnpatched(ctx); err != nil {
 			return err
 		}
 	}
@@ -53,15 +55,15 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 	if err != nil {
 		return err
 	}
-	_, err = g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName())
+	_, _ = g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName()).Run(ctx)
 	data := map[string]string{defaultConfigMapDeploymentKey: string(bs)}
-	_, err = g.kubeCmd.CreateConfigMap(g.DeploymentConfigMapName(), data)
+	_, err = g.kubeCmd.CreateConfigMap(g.DeploymentConfigMapName(), data).Run(ctx)
 	if err != nil {
 		return err
 	}
 
 	g.l.Infof("waiting for deployment to get ready")
-	_, err = g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run()
+	_, err = g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run(ctx)
 	if err != nil {
 		return err
 	}
@@ -76,7 +78,7 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 	pathedImageName := g.patchedImageName(repo)
 	g.l.Infof("building patch image with %v:%v", pathedImageName, tag)
 	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
-		fmt.Sprintf("IMAGE=%v:%v", image, tag), "-t", pathedImageName).Run()
+		fmt.Sprintf("IMAGE=%v:%v", image, tag), "-t", pathedImageName).Run(ctx)
 	if err != nil {
 		return err
 	}
@@ -84,7 +86,7 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 	if repo != "" {
 		//contains a repo, push the built image
 		g.l.Infof("pushing patch image with %v:%v", pathedImageName, tag)
-		_, err = g.dockerCmd.Push(pathedImageName, tag)
+		_, err = g.dockerCmd.Push(pathedImageName, tag).Run(ctx)
 		if err != nil {
 			return err
 		}
@@ -100,7 +102,7 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 	}
 
 	g.l.Infof("patching deployment for development %s with patch %s", g.deployment.Name, patch)
-	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run()
+	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run(ctx)
 	return err
 }
 
@@ -108,7 +110,7 @@ func (g *Grapple) Rollback() error {
 	if !g.isPatched() {
 		return fmt.Errorf("deployment not patched, stopping rollback")
 	}
-	return g.rollbackUntilUnpatched()
+	return g.rollbackUntilUnpatched(context.Background())
 }
 
 func (g Grapple) isPatched() bool {
@@ -116,29 +118,29 @@ func (g Grapple) isPatched() bool {
 	return ok
 }
 
-func (g *Grapple) rollbackUntilUnpatched() error {
+func (g *Grapple) rollbackUntilUnpatched(ctx context.Context) error {
 	if !g.isPatched() {
 		return nil
 	}
-	if err := g.rollback(); err != nil {
+	if err := g.rollback(ctx); err != nil {
 		return err
 	}
 	if err := g.updateDeployment(); err != nil {
 		return err
 	}
-	return g.rollbackUntilUnpatched()
+	return g.rollbackUntilUnpatched(ctx)
 }
 
-func (g Grapple) rollback() error {
+func (g Grapple) rollback(ctx context.Context) error {
 	g.l.Infof("removing ConfigMap %v", g.DeploymentConfigMapName())
-	_, err := g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName())
+	_, err := g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName()).Run(ctx)
 	if err != nil {
 		// may not exist
 		g.l.Warn(err)
 	}
 
 	g.l.Infof("rolling back deployment %v", g.deployment.Name)
-	_, err = g.kubeCmd.RollbackDeployment(g.deployment.Name).Run()
+	_, err = g.kubeCmd.RollbackDeployment(g.deployment.Name).Run(ctx)
 	if err != nil {
 		return err
 	}
@@ -157,7 +159,7 @@ func (g Grapple) patchedImageName(repo string) string {
 }
 
 func (g *Grapple) updateDeployment() error {
-	d, err := g.kubeCmd.GetDeployment(g.deployment.Name)
+	d, err := g.kubeCmd.GetDeployment(context.Background(), g.deployment.Name)
 	if err != nil {
 		return err
 	}
