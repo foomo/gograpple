@@ -129,10 +129,10 @@ func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	if c.cwd != "" {
 		cmd.Dir = c.cwd
 	}
-	c.l.Tracef("executing %q", cmd.String())
 
 	combinedBuf := new(bytes.Buffer)
 	if c.l != nil {
+		c.l.Tracef("executing %q", cmd.String())
 		traceWriter := c.l.WriterLevel(logrus.TraceLevel)
 		warnWriter := c.l.WriterLevel(logrus.WarnLevel)
 		c.stdoutWriters = append(c.stdoutWriters, combinedBuf, traceWriter)
