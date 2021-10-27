@@ -108,10 +108,6 @@ func (c *Cmd) Logger(l *logrus.Entry) *Cmd {
 	return c
 }
 
-// func (c *Cmd) Run() (string, error) {
-// 	return c.run(goexec.Command(c.command[0], c.command[1:]...))
-// }
-
 func (c *Cmd) Run(ctx context.Context) (string, error) {
 	return c.run(goexec.CommandContext(ctx, c.command[0], c.command[1:]...))
 }
