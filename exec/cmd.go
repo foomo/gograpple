@@ -127,12 +127,12 @@ func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	}
 
 	combinedBuf := new(bytes.Buffer)
+	c.stdoutWriters = append(c.stdoutWriters, combinedBuf)
+	c.stderrWriters = append(c.stderrWriters, combinedBuf)
 	if c.l != nil {
 		c.l.Tracef("executing %q", cmd.String())
-		traceWriter := c.l.WriterLevel(logrus.TraceLevel)
-		warnWriter := c.l.WriterLevel(logrus.WarnLevel)
-		c.stdoutWriters = append(c.stdoutWriters, combinedBuf, traceWriter)
-		c.stderrWriters = append(c.stderrWriters, combinedBuf, warnWriter)
+		c.stdoutWriters = append(c.stdoutWriters, c.l.WriterLevel(logrus.TraceLevel))
+		c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.WarnLevel))
 	}
 	cmd.Stdout = io.MultiWriter(c.stdoutWriters...)
 	cmd.Stderr = io.MultiWriter(c.stderrWriters...)
