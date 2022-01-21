@@ -16,7 +16,7 @@ import (
 const delveBin = "dlv"
 
 func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host string,
-	port int, delveContinue, vscode bool) error {
+	port int, vscode bool) error {
 	validateCtx := context.Background()
 	// validate k8s resources for delve session
 	if err := g.kubeCmd.ValidatePod(validateCtx, g.deployment, &pod); err != nil {
@@ -67,7 +67,7 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		dslog := g.componentLog("server")
 		dslog.Infof("starting delve server on %v:%v", host, port)
 		ds := delve.NewKubeDelveServer(dslog, g.deployment.Namespace, host, port)
-		ds.StartNoWait(ctx, pod, container, g.binDestination(), delveContinue, binArgs)
+		ds.StartNoWait(ctx, pod, container, g.binDestination(), binArgs)
 		// port forward to pod with delve server
 		dclog := g.componentLog("client")
 		g.portForwardDelve(dclog, ctx, pod, host, port)
@@ -144,7 +144,7 @@ func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourc
 		relInputs = append(relInputs, strings.TrimPrefix(sourcePath, goModPath+string(filepath.Separator)))
 	}
 
-	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, `-gcflags="all=-N -l"`).Env("GOOS=linux").Run(ctx)
+	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, "-gcflags", "-N -l").Env("GOOS=linux").Run(ctx)
 	if errBuild != nil {
 		return errBuild
 	}

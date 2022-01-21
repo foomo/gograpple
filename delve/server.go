@@ -31,9 +31,9 @@ func NewKubeDelveServer(l *logrus.Entry, namespace, host string, port int) *Kube
 	return &KubeDelveServer{host, port, kubectl, nil}
 }
 
-func (kds *KubeDelveServer) StartNoWait(ctx context.Context, pod, container string, binDest string,
-	useContinue bool, binArgs []string) {
-	cmd := kds.kubeCmd.ExecPod(pod, container, kds.buildCommand(binDest, useContinue, binArgs))
+func (kds *KubeDelveServer) StartNoWait(ctx context.Context, pod, container string,
+	binDest string, binArgs []string) {
+	cmd := kds.kubeCmd.ExecPod(pod, container, kds.buildCommand(binDest, binArgs))
 	cmd.PostStart(
 		func(p *os.Process) error {
 			kds.process = p
@@ -42,9 +42,9 @@ func (kds *KubeDelveServer) StartNoWait(ctx context.Context, pod, container stri
 	<-cmd.Started()
 }
 
-func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string, binDest string,
-	useContinue bool, binArgs []string) error {
-	cmd := kds.kubeCmd.ExecPod(pod, container, kds.buildCommand(binDest, useContinue, binArgs))
+func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string,
+	binDest string, binArgs []string) error {
+	cmd := kds.kubeCmd.ExecPod(pod, container, kds.buildCommand(binDest, binArgs))
 	// execute command to run dlv on container
 	out, err := cmd.PostStart(
 		func(p *os.Process) error {
@@ -54,13 +54,10 @@ func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string, bi
 	return errors.WithMessage(err, out)
 }
 
-func (kds KubeDelveServer) buildCommand(binDest string, useContinue bool, binArgs []string) []string {
+func (kds KubeDelveServer) buildCommand(binDest string, binArgs []string) []string {
 	cmd := []string{
-		"dlv", "exec", binDest, "--api-version=2", "--headless",
-		fmt.Sprintf("--listen=:%v", kds.port), "--accept-multiclient",
-	}
-	if useContinue {
-		cmd = append(cmd, "--continue")
+		"dlv", "exec", binDest, "--headless",
+		fmt.Sprintf("--listen=:%v", kds.port), "--accept-multiclient", "--continue",
 	}
 	if len(binArgs) > 0 {
 		cmd = append(cmd, "--")
