@@ -2,12 +2,17 @@ package gograpple
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path"
+	"path/filepath"
+)
 
-	"github.com/foomo/gograpple/bindata"
+var (
+	//go:embed the-hook
+	bindata embed.FS
 )
 
 type Mount struct {
@@ -69,11 +74,33 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 	}
 
 	g.l.Infof("extracting patch files")
-	const patchFolder = "the-hook"
-	if err := bindata.RestoreAssets(os.TempDir(), patchFolder); err != nil {
+
+	const (
+		patchFolder    = "the-hook"
+		dockerfileName = "Dockerfile"
+		patchFileName  = "deployment-patch.yaml"
+		perm           = 0700
+	)
+
+	dockerFile, err := bindata.ReadFile(filepath.Join(patchFolder, dockerfileName))
+	if err != nil {
 		return err
 	}
+	deploymentPatch, err := bindata.ReadFile(filepath.Join(patchFolder, patchFileName))
+	if err != nil {
+		return err
+	}
+
 	theHookPath := path.Join(os.TempDir(), patchFolder)
+	_ = os.Mkdir(theHookPath, perm)
+	err = os.WriteFile(filepath.Join(theHookPath, dockerfileName), dockerFile, perm)
+	if err != nil {
+		return err
+	}
+	err = os.WriteFile(filepath.Join(theHookPath, patchFileName), deploymentPatch, perm)
+	if err != nil {
+		return err
+	}
 
 	pathedImageName := g.patchedImageName(repo)
 	g.l.Infof("building patch image with %v:%v", pathedImageName, tag)
