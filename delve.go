@@ -144,7 +144,7 @@ func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourc
 		relInputs = append(relInputs, strings.TrimPrefix(sourcePath, goModPath+string(filepath.Separator)))
 	}
 
-	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, "-gcflags", "-N -l").Env("GOOS=linux").Run(ctx)
+	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, "-gcflags", "-N -l").Env("GOOS=linux", "GOARCH=amd64").Run(ctx)
 	if errBuild != nil {
 		return errBuild
 	}
