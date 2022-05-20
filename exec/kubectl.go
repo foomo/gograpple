@@ -30,14 +30,15 @@ func (c KubectlCmd) WaitForRollout(deployment, timeout string) *Cmd {
 		"-w", "--timeout", timeout)
 }
 
-func (c KubectlCmd) GetMostRecentPodBySelectors(ctx context.Context,
+func (c KubectlCmd) GetMostRecentRunningPodBySelectors(ctx context.Context,
 	selectors map[string]string) (string, error) {
 	var selector []string
 	for k, v := range selectors {
 		selector = append(selector, fmt.Sprintf("%v=%v", k, v))
 	}
 	out, err := c.Args("--selector", strings.Join(selector, ","),
-		"get", "pods", "--sort-by=.status.startTime", "-o", "name").Run(ctx)
+		"get", "pods", "--field-selector=status.phase=Running",
+		"--sort-by=.status.startTime", "-o", "name").Run(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -279,7 +280,7 @@ func (c KubectlCmd) ValidateDeployment(ctx context.Context, namespace, deploymen
 func (c KubectlCmd) ValidatePod(ctx context.Context, d apps.Deployment, pod *string) error {
 	if *pod == "" {
 		var err error
-		*pod, err = c.GetMostRecentPodBySelectors(ctx, d.Spec.Selector.MatchLabels)
+		*pod, err = c.GetMostRecentRunningPodBySelectors(ctx, d.Spec.Selector.MatchLabels)
 		if err != nil || *pod == "" {
 			return err
 		}

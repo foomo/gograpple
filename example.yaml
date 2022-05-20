@@ -1,0 +1,8 @@
+source_path: /Users/mpejanovic/Documents/dev/gograpple/test/app/main.go
+image: golang
+tag: latest
+cluster: k3d-local
+namespace: default
+deployment: example
+container: example
+repository: local-registry:56523

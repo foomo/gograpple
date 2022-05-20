@@ -16,5 +16,6 @@
 
 .todo
 .idea/
+.vscode/
 
 bin/

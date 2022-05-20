@@ -28,6 +28,13 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 	if !g.isPatched() {
 		return fmt.Errorf("deployment not patched, stopping delve")
 	}
+
+	g.l.Infof("waiting for deployment to get ready")
+	_, err := g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run(context.Background())
+	if err != nil {
+		return err
+	}
+
 	// populate bin args if empty
 	if len(binArgs) == 0 {
 		var err error

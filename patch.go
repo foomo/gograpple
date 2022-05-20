@@ -142,7 +142,11 @@ func (g *Grapple) Rollback() error {
 }
 
 func (g Grapple) isPatched() bool {
-	_, ok := g.deployment.Spec.Template.ObjectMeta.Labels[defaultPatchedLabel]
+	d, err := g.kubeCmd.GetDeployment(context.Background(), g.deployment.Name)
+	if err != nil {
+		return false
+	}
+	_, ok := d.Spec.Template.ObjectMeta.Labels[defaultPatchedLabel]
 	return ok
 }
 

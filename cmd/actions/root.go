@@ -23,7 +23,7 @@ func init() {
 	delveCmd.Flags().Var(flagListen, "listen", "delve host:port to listen on")
 	delveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
 	delveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
-	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd)
+	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd, configCmd)
 }
 
 var (
@@ -52,7 +52,7 @@ var (
 	rootCmd = &cobra.Command{
 		Use: "gograpple",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Name() == commandNameVersion {
+			if cmd.Name() == commandNameVersion || cmd.Name() == commandNameConfig {
 				return nil
 			}
 			l = newLogger(flagVerbose, flagJSONLog)
