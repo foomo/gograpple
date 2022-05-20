@@ -1,10 +1,7 @@
-pack-data:
-	go-bindata -o bindata/bindata.go -pkg bindata the-hook/...
-
-build: pack-data
+build:
 	go build -o bin/gograpple cmd/main.go
 
-install: pack-data
+install:
 	go build -o /usr/local/bin/gograpple cmd/main.go
 
 test:

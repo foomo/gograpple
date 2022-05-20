@@ -1,6 +1,7 @@
 package gograpple
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -26,10 +27,10 @@ type launchArgs struct {
 	ShowLog    bool   `json:"showLog,omitempty"`
 }
 
-func newLaunchArgs(pod, host string, port, iteration int, workspaceFolder string) *launchArgs {
+func newLaunchArgs(host string, port int, workspaceFolder string) *launchArgs {
 	return &launchArgs{
 		Host:       host,
-		Name:       fmt.Sprintf("delve-%v-run-%v", pod, iteration),
+		Name:       fmt.Sprintf("delve-%v", time.Now().Unix()),
 		Port:       port,
 		Request:    "attach",
 		Type:       "go",
@@ -50,8 +51,7 @@ func (la *launchArgs) toJson() (string, error) {
 	return string(bytes), nil
 }
 
-func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iteration int, sleep time.Duration) error {
-
+func launchVSCode(ctx context.Context, l *logrus.Entry, goModDir, host string, port, tries int) error {
 	openFile := goModDir
 	workspaceFolder := "${workspaceFolder}"
 	// is there a workspace in that dir
@@ -66,20 +66,20 @@ func launchVscode(l *logrus.Entry, goModDir, pod, host string, port, tries, iter
 		}
 	}
 
-	exec.NewCommand(l, "code").Args(openFile).PostEnd(func() error {
-		return tryCall(l, tries, 200*time.Millisecond, func(i int) error {
+	exec.NewCommand("code").Logger(l).Args(openFile).PostEnd(func() error {
+		return tryCallWithContext(ctx, tries, 200*time.Millisecond, func(i int) error {
 			l.Infof("waiting for vscode status (%v/%v)", i, tries)
-			_, err := exec.NewCommand(l, "code").Args("-s").Run()
+			_, err := exec.NewCommand("code").Logger(l).Args("-s").Run(ctx)
 			return err
 		})
-	}).Run()
+	}).Run(ctx)
 
 	l.Infof("opening debug configuration")
-	la, err := newLaunchArgs(pod, host, port, iteration, workspaceFolder).toJson()
+	la, err := newLaunchArgs(host, port, workspaceFolder).toJson()
 	if err != nil {
 		return err
 	}
-	_, err = runOpen(l, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+url.QueryEscape(la))
+	_, err = Open(l, ctx, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+url.QueryEscape(la))
 	if err != nil {
 		return err
 	}

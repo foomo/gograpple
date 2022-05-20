@@ -8,7 +8,6 @@ builds:
     ldflags:
       - -s -w -X github.com/foomo/gograpple/cmd/actions.version={{.Version}}
     goos:
-      - windows
       - darwin
       - linux
     goarch:

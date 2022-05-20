@@ -2,17 +2,17 @@ package exec
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	goexec "os/exec"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
 
 type Cmd struct {
 	l *logrus.Entry
-	// cmd           *exec.Cmd
+	// actual        *exec.Cmd
 	command       []string
 	cwd           string
 	env           []string
@@ -20,18 +20,21 @@ type Cmd struct {
 	stdoutWriters []io.Writer
 	stderrWriters []io.Writer
 	wait          bool
-	t             time.Duration
+	// t             time.Duration
 	preStartFunc  func() error
-	postStartFunc func() error
+	postStartFunc func(p *os.Process) error
 	postEndFunc   func() error
+	chanStarted   chan struct{}
+	chanDone      chan struct{}
 }
 
-func NewCommand(l *logrus.Entry, name string) *Cmd {
+func NewCommand(name string) *Cmd {
 	return &Cmd{
-		l:       l,
-		command: []string{name},
-		wait:    true,
-		env:     os.Environ(),
+		command:     []string{name},
+		wait:        true,
+		env:         os.Environ(),
+		chanStarted: make(chan struct{}),
+		chanDone:    make(chan struct{}),
 	}
 }
 
@@ -80,11 +83,6 @@ func (c *Cmd) Stderr(w io.Writer) *Cmd {
 	return c
 }
 
-func (c *Cmd) Timeout(t time.Duration) *Cmd {
-	c.t = t
-	return c
-}
-
 func (c *Cmd) NoWait() *Cmd {
 	c.wait = false
 	return c
@@ -95,7 +93,7 @@ func (c *Cmd) PreStart(f func() error) *Cmd {
 	return c
 }
 
-func (c *Cmd) PostStart(f func() error) *Cmd {
+func (c *Cmd) PostStart(f func(p *os.Process) error) *Cmd {
 	c.postStartFunc = f
 	return c
 }
@@ -105,20 +103,37 @@ func (c *Cmd) PostEnd(f func() error) *Cmd {
 	return c
 }
 
-func (c *Cmd) Run() (string, error) {
-	cmd := goexec.Command(c.command[0], c.command[1:]...)
+func (c *Cmd) Logger(l *logrus.Entry) *Cmd {
+	c.l = l
+	return c
+}
+
+func (c *Cmd) Run(ctx context.Context) (string, error) {
+	return c.run(goexec.CommandContext(ctx, c.command[0], c.command[1:]...))
+}
+
+func (c *Cmd) Started() <-chan struct{} {
+	return c.chanStarted
+}
+
+func (c *Cmd) Done() <-chan struct{} {
+	return c.chanDone
+}
+
+func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	cmd.Env = append(os.Environ(), c.env...)
 	if c.cwd != "" {
 		cmd.Dir = c.cwd
 	}
-	c.l.Tracef("executing %q", cmd.String())
 
 	combinedBuf := new(bytes.Buffer)
-	traceWriter := c.l.WriterLevel(logrus.TraceLevel)
-	warnWriter := c.l.WriterLevel(logrus.WarnLevel)
-
-	c.stdoutWriters = append(c.stdoutWriters, combinedBuf, traceWriter)
-	c.stderrWriters = append(c.stderrWriters, combinedBuf, warnWriter)
+	c.stdoutWriters = append(c.stdoutWriters, combinedBuf)
+	c.stderrWriters = append(c.stderrWriters, combinedBuf)
+	if c.l != nil {
+		c.l.Tracef("executing %q", cmd.String())
+		c.stdoutWriters = append(c.stdoutWriters, c.l.WriterLevel(logrus.TraceLevel))
+		c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.WarnLevel))
+	}
 	cmd.Stdout = io.MultiWriter(c.stdoutWriters...)
 	cmd.Stderr = io.MultiWriter(c.stderrWriters...)
 
@@ -133,23 +148,18 @@ func (c *Cmd) Run() (string, error) {
 	}
 
 	if c.postStartFunc != nil {
-		if err := c.postStartFunc(); err != nil {
+		if err := c.postStartFunc(cmd.Process); err != nil {
 			return "", err
 		}
 	}
 
-	if c.wait {
-		if c.t != 0 {
-			timer := time.AfterFunc(c.t, func() {
-				cmd.Process.Kill()
-			})
-			defer timer.Stop()
-		}
+	go func() {
+		c.chanStarted <- struct{}{}
+	}()
 
+	if c.wait {
 		if err := cmd.Wait(); err != nil {
-			if c.t == 0 {
-				return "", err
-			}
+			return "", err
 		}
 		if c.postEndFunc != nil {
 			if err := c.postEndFunc(); err != nil {
@@ -157,6 +167,10 @@ func (c *Cmd) Run() (string, error) {
 			}
 		}
 	}
+
+	go func() {
+		c.chanDone <- struct{}{}
+	}()
 
 	return combinedBuf.String(), nil
 }

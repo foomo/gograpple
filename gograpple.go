@@ -1,19 +1,22 @@
 package gograpple
 
 import (
+	"context"
+
 	"github.com/foomo/gograpple/exec"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/apps/v1"
 )
 
 const (
-	devDeploymentPatchFile        = "deployment-patch.yaml"
-	defaultWaitTimeout            = "30s"
-	conditionContainersReady      = "condition=ContainersReady"
-	defaultPatchedLabel           = "dev-mode-patched"
-	defaultPatchImage             = "gograpple-patch:latest"
-	defaultConfigMapMount         = "/etc/config/mounted"
-	defaultConfigMapDeploymentKey = "deployment.json"
+	devDeploymentPatchFile           = "deployment-patch.yaml"
+	defaultWaitTimeout               = "30s"
+	conditionContainersReady         = "condition=ContainersReady"
+	defaultPatchedLabel              = "dev-mode-patched"
+	defaultPatchImageSuffix          = "-patch"
+	defaultConfigMapMount            = "/etc/config/mounted"
+	defaultConfigMapDeploymentKey    = "deployment.json"
+	defaultConfigMapDeploymentSuffix = "-patch"
 )
 
 type Grapple struct {
@@ -26,19 +29,23 @@ type Grapple struct {
 
 func NewGrapple(l *logrus.Entry, namespace, deployment string) (*Grapple, error) {
 	g := &Grapple{l: l}
-	g.kubeCmd = exec.NewKubectlCommand(l)
-	g.dockerCmd = exec.NewDockerCommand(l)
-	g.goCmd = exec.NewGoCommand(l)
+	g.kubeCmd = exec.NewKubectlCommand()
+	g.dockerCmd = exec.NewDockerCommand()
+	g.goCmd = exec.NewGoCommand()
+	g.kubeCmd.Logger(l)
+	g.dockerCmd.Logger(l)
+	g.goCmd.Logger(l)
 	g.kubeCmd.Args("-n", namespace)
 
-	if err := g.validateNamespace(namespace); err != nil {
+	validateCtx := context.Background()
+	if err := g.kubeCmd.ValidateNamespace(validateCtx, namespace); err != nil {
 		return nil, err
 	}
-	if err := g.validateDeployment(namespace, deployment); err != nil {
+	if err := g.kubeCmd.ValidateDeployment(validateCtx, namespace, deployment); err != nil {
 		return nil, err
 	}
 
-	d, err := g.kubeCmd.GetDeployment(deployment)
+	d, err := g.kubeCmd.GetDeployment(validateCtx, deployment)
 	if err != nil {
 		return nil, err
 	}
