@@ -35,6 +35,12 @@ var (
 				return err
 			}
 			defer g.Rollback()
+			switch c.Launch {
+			case "vscode":
+				flagVscode = true
+			case "goland":
+				//TODO implement goland launch support
+			}
 			return g.Delve("", c.Container, c.SourcePath, nil, flagListen.Host, flagListen.Port, flagVscode)
 		},
 	}
