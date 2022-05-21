@@ -9,7 +9,6 @@ import (
 	"github.com/c-bata/go-prompt"
 	"github.com/c-bata/go-prompt/completer"
 	"github.com/foomo/gograpple/suggest"
-	"github.com/runz0rd/common-go"
 	"github.com/runz0rd/gencon"
 	"gopkg.in/yaml.v3"
 )
@@ -105,7 +104,7 @@ func LoadConfig(path string) (Config, error) {
 			prompt.OptionPrefixTextColor(prompt.Fuchsia),
 			// since we have a file completer
 			prompt.OptionCompletionWordSeparator("/"),
-		).RunTags(&c)
+		).Run(&c)
 		// save yaml file
 		data, err := yaml.Marshal(c)
 		if err != nil {
@@ -116,6 +115,6 @@ func LoadConfig(path string) (Config, error) {
 			return c, err
 		}
 	}
-	err := common.LoadYaml(path, &c)
+	err := LoadYaml(path, &c)
 	return c, err
 }

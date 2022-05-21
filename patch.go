@@ -131,6 +131,12 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 
 	g.l.Infof("patching deployment for development %s with patch %s", g.deployment.Name, patch)
 	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run(ctx)
+	if err != nil {
+		return err
+	}
+
+	g.l.Infof("waiting for deployment to get ready")
+	_, err = g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run(ctx)
 	return err
 }
 
