@@ -39,7 +39,6 @@ var (
 	flagSourcePath string
 	flagArgs       = NewStringList(" ")
 	flagRollback   bool
-	flagContinue   bool
 	flagListen     = NewHostPort("127.0.0.1", 0)
 	flagVscode     bool
 	flagJSONLog    bool
