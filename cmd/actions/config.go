@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"fmt"
 	"path"
 
 	"github.com/foomo/gograpple"
@@ -36,12 +37,18 @@ var (
 			}
 			defer g.Rollback()
 			switch c.Launch {
+			//TODO implement goland launch support
+			case "":
 			case "vscode":
 				flagVscode = true
-			case "goland":
-				//TODO implement goland launch support
+			default:
+				return fmt.Errorf("unsupported launch option %q", c.Launch)
 			}
-			return g.Delve("", c.Container, c.SourcePath, nil, flagListen.Host, flagListen.Port, flagVscode)
+			addr := HostPort{}
+			if err := addr.Set(c.ListenAddr); err != nil {
+				return err
+			}
+			return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, flagVscode)
 		},
 	}
 )

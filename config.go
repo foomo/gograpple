@@ -22,6 +22,7 @@ type Config struct {
 	Container  string `yaml:"container,omitempty" depends:"Deployment"`
 	Repository string `yaml:"repository,omitempty" depends:"Deployment"`
 	Launch     string `yaml:"launch,omitempty"`
+	ListenAddr string `yaml:"listen_addr,omitempty"`
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
@@ -92,6 +93,10 @@ func (c Config) RepositorySuggest(d prompt.Document) []prompt.Suggest {
 
 func (c Config) LaunchSuggest(d prompt.Document) []prompt.Suggest {
 	return []prompt.Suggest{{Text: "vscode"}, {Text: "goland"}}
+}
+
+func (c Config) ListenAddrSuggest(d prompt.Document) []prompt.Suggest {
+	return []prompt.Suggest{{Text: ":2345"}}
 }
 
 func LoadConfig(path string) (Config, error) {

@@ -24,15 +24,26 @@ func NewHostPort(host string, port int) *HostPort {
 
 func (lf *HostPort) Set(value string) error {
 	pieces := strings.Split(value, ":")
-	if pieces[0] != "" {
+	switch true {
+	case len(pieces) == 1 && pieces[0] != value:
+		lf.Host = "127.0.0.1"
+		var err error
+		lf.Port, err = strconv.Atoi(pieces[0])
+		if err != nil {
+			return err
+		}
+	case len(pieces) == 2:
 		lf.Host = pieces[0]
-	}
-	var err error
-	if len(pieces) == 2 && pieces[1] != "" {
+		if pieces[0] == "" {
+			lf.Host = "127.0.0.1"
+		}
+		var err error
 		lf.Port, err = strconv.Atoi(pieces[1])
-	}
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("invalid address %q provided", value)
 	}
 	addr, err := gograpple.CheckTCPConnection(lf.Host, lf.Port)
 	if err != nil {

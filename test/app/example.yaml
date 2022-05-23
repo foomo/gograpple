@@ -6,3 +6,4 @@ deployment: example
 container: example
 repository: local-registry:56523
 launch: vscode
+listen_addr: :2345
