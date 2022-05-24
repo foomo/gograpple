@@ -56,7 +56,7 @@ func (c Config) ImageSuggest(d prompt.Document) []prompt.Suggest {
 	suggestions := suggest.Completer(d, suggest.MustList(func() ([]string, error) {
 		return kc.ListImages(c.Namespace, c.Deployment)
 	}))
-	return append(suggestions, prompt.Suggest{Text: "golang:latest"})
+	return append(suggestions, prompt.Suggest{Text: "busybox:latest"})
 }
 
 func (c Config) ClusterSuggest(d prompt.Document) []prompt.Suggest {

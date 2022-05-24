@@ -1,5 +1,5 @@
 source_path: /Users/mpejanovic/Documents/dev/gograpple/test/app/main.go
-image: golang:latest
+image: busybox:latest
 cluster: k3d-local
 namespace: default
 deployment: example
