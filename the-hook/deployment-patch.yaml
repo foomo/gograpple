@@ -10,8 +10,9 @@ spec:
         image: {{ .Image }}
         command:
         args:
-        livenessProbe:
-        readinessProbe:
+        livenessProbe: ~
+        readinessProbe: ~
+        startupProbe: ~
         volumeMounts:
           - name: patch-configmap
             mountPath: {{ .ConfigMapMount }}
