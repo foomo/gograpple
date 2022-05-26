@@ -15,7 +15,7 @@ import (
 
 type Config struct {
 	SourcePath string `yaml:"source_path"`
-	Image      string `yaml:"image,omitempty" depends:"Deployment"`
+	Dockerfile string `yaml:"dockerfile,omitempty"`
 	Cluster    string `yaml:"cluster"`
 	Namespace  string `yaml:"namespace" depends:"Cluster"`
 	Deployment string `yaml:"deployment" depends:"Namespace"`
@@ -51,12 +51,15 @@ func (c Config) SourcePathSuggest(d prompt.Document) []prompt.Suggest {
 	return completer.Complete(d)
 }
 
-func (c Config) ImageSuggest(d prompt.Document) []prompt.Suggest {
-	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
-	suggestions := suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return kc.ListImages(c.Namespace, c.Deployment)
-	}))
-	return append(suggestions, prompt.Suggest{Text: "busybox:latest"})
+func (c Config) DockerfileSuggest(d prompt.Document) []prompt.Suggest {
+	//todo better file completer?
+	completer := completer.FilePathCompleter{
+		IgnoreCase: true,
+		Filter: func(fi os.FileInfo) bool {
+			return fi.IsDir() || strings.Contains(fi.Name(), "Dockerfile")
+		},
+	}
+	return completer.Complete(d)
 }
 
 func (c Config) ClusterSuggest(d prompt.Document) []prompt.Suggest {

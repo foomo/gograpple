@@ -1,8 +1,9 @@
-ARG IMAGE=busybox
-FROM golang:latest AS build
+ARG IMAGE=alpine:latest
+
+FROM golang:alpine AS build
 WORKDIR /
-# RUN CGO_ENABLED=0 go get -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv
-RUN go install github.com/go-delve/delve/cmd/dlv@latest
+RUN apk add gcc musl-dev
+RUN CGO_ENABLED=0 go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@latest
 
 FROM $IMAGE
 COPY --from=build /go/bin/dlv /bin/dlv

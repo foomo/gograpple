@@ -8,13 +8,12 @@ import (
 
 func init() {
 
-	rootCmd.PersistentFlags().StringVarP(&flagTag, "tag", "t", "latest", "Specifies the image tag")
 	rootCmd.PersistentFlags().StringVarP(&flagDir, "dir", "d", ".", "Specifies working directory")
 	rootCmd.PersistentFlags().StringVarP(&flagNamespace, "namespace", "n", "default", "namespace name")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Specifies should command output be displayed")
 	rootCmd.PersistentFlags().StringVarP(&flagPod, "pod", "p", "", "pod name (default most recent one)")
 	rootCmd.PersistentFlags().StringVarP(&flagContainer, "container", "c", "", "container name (default deployment name)")
-	patchCmd.Flags().StringVarP(&flagImage, "image", "i", "", "image to be used for patching (default deployment image)")
+	patchCmd.Flags().StringVar(&flagDockerfile, "dockerfile", "", "dockerfile to be used for patching (default none)")
 	patchCmd.Flags().StringVarP(&flagRepo, "repo", "r", "", "repository to be used for pushing patched image (default none)")
 	patchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
 	patchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
@@ -27,14 +26,13 @@ func init() {
 }
 
 var (
-	flagTag        string
+	flagDockerfile string
 	flagDir        string
 	flagVerbose    bool
 	flagNamespace  string
 	flagPod        string
 	flagContainer  string
 	flagRepo       string
-	flagImage      string
 	flagMounts     []string
 	flagSourcePath string
 	flagArgs       = NewStringList(" ")
@@ -79,7 +77,7 @@ var (
 			if err != nil {
 				return err
 			}
-			return grapple.Patch(flagRepo, flagImage, flagTag, flagContainer, mounts)
+			return grapple.Patch(flagRepo, flagDockerfile, flagContainer, mounts)
 		},
 	}
 	shellCmd = &cobra.Command{

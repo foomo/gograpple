@@ -17,6 +17,9 @@ const (
 	defaultConfigMapMount            = "/etc/config/mounted"
 	defaultConfigMapDeploymentKey    = "deployment.json"
 	defaultConfigMapDeploymentSuffix = "-patch"
+	defaultTag                       = "latest"
+	defaultImage                     = "alpine:latest"
+	patchImageName                   = "patch-image"
 )
 
 type Grapple struct {

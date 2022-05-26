@@ -1,5 +1,5 @@
 source_path: /Users/mpejanovic/Documents/dev/gograpple/test/app/main.go
-image: busybox:latest
+dockerfile: test/app/Dockerfile
 cluster: k3d-local
 namespace: default
 deployment: example

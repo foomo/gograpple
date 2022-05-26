@@ -8,6 +8,7 @@ spec:
       containers:
       - name: {{ .Container }}
         image: {{ .Image }}
+        imagePullPolicy: Always
         command:
         args:
         livenessProbe: ~

@@ -40,7 +40,7 @@ func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mo
 	}
 }
 
-func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error {
+func (g Grapple) Patch(repo, dockerfile, container string, mounts []Mount) error {
 	ctx := context.Background()
 	if g.isPatched() {
 		g.l.Warn("deployment already patched, rolling back first")
@@ -49,9 +49,6 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 		}
 	}
 	if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
-		return err
-	}
-	if err := ValidateImage(g.deployment, container, &image, &tag); err != nil {
 		return err
 	}
 
@@ -82,7 +79,7 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 		perm           = 0700
 	)
 
-	dockerFile, err := bindata.ReadFile(filepath.Join(patchFolder, dockerfileName))
+	patchDockerfile, err := bindata.ReadFile(filepath.Join(patchFolder, dockerfileName))
 	if err != nil {
 		return err
 	}
@@ -93,7 +90,7 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 
 	theHookPath := path.Join(os.TempDir(), patchFolder)
 	_ = os.Mkdir(theHookPath, perm)
-	err = os.WriteFile(filepath.Join(theHookPath, dockerfileName), dockerFile, perm)
+	err = os.WriteFile(filepath.Join(theHookPath, dockerfileName), patchDockerfile, perm)
 	if err != nil {
 		return err
 	}
@@ -102,10 +99,23 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 		return err
 	}
 
-	pathedImageName := g.patchedImageName(repo)
-	g.l.Infof("building patch image with %v:%v", pathedImageName, tag)
+	image := defaultImage
+	if dockerfile != "" {
+		_, err = g.dockerCmd.Build(
+			filepath.Dir(dockerfile),
+			"-f", dockerfile, "-t", patchImageName,
+			"--platform", "linux/amd64").Run(ctx)
+		if err != nil {
+			return err
+		}
+		image = patchImageName
+	}
+
+	patchedImage := g.patchedImageName(repo)
+	completePatchedImage := fmt.Sprintf("%v:%v", patchedImage, defaultTag)
+	g.l.Infof("building patch image with %v", completePatchedImage)
 	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
-		fmt.Sprintf("IMAGE=%v:%v", image, tag), "-t", pathedImageName,
+		fmt.Sprintf("IMAGE=%v", image), "-t", completePatchedImage,
 		"--platform", "linux/amd64").Run(ctx)
 	if err != nil {
 		return err
@@ -113,8 +123,8 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 
 	if repo != "" {
 		//contains a repo, push the built image
-		g.l.Infof("pushing patch image with %v:%v", pathedImageName, tag)
-		_, err = g.dockerCmd.Push(pathedImageName, tag).Run(ctx)
+		g.l.Infof("pushing patch image with %v", completePatchedImage)
+		_, err = g.dockerCmd.Push(patchedImage, defaultTag).Run(ctx)
 		if err != nil {
 			return err
 		}
@@ -123,7 +133,7 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 	g.l.Infof("rendering deployment patch template")
 	patch, err := renderTemplate(
 		path.Join(theHookPath, devDeploymentPatchFile),
-		g.newPatchValues(g.deployment.Name, container, fmt.Sprintf("%v:%v", pathedImageName, tag), mounts),
+		g.newPatchValues(g.deployment.Name, container, completePatchedImage, mounts),
 	)
 	if err != nil {
 		return err
