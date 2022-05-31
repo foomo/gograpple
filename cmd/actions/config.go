@@ -20,6 +20,10 @@ var (
 			if err != nil {
 				return err
 			}
+			addr := HostPort{}
+			if err := addr.Set(c.ListenAddr); err != nil {
+				return err
+			}
 			if err := suggest.KubeConfig(suggest.DefaultKubeConfig).SetContext(c.Cluster); err != nil {
 				return err
 			}
@@ -38,10 +42,6 @@ var (
 				flagVscode = true
 			default:
 				return fmt.Errorf("unsupported launch option %q", c.Launch)
-			}
-			addr := HostPort{}
-			if err := addr.Set(c.ListenAddr); err != nil {
-				return err
 			}
 			return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, flagVscode)
 		},
