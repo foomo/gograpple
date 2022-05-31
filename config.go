@@ -1,6 +1,7 @@
 package gograpple
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path"
@@ -26,12 +27,13 @@ type Config struct {
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
-	// marshal SourcePath into absolute path
+	// marshal relative paths into absolute
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
 	c.SourcePath = path.Join(cwd, c.SourcePath)
+	c.Dockerfile = path.Join(cwd, c.Dockerfile)
 	type alias Config
 	node := yaml.Node{}
 	err = node.Encode(alias(c))
@@ -105,6 +107,8 @@ func (c Config) ListenAddrSuggest(d prompt.Document) []prompt.Suggest {
 func LoadConfig(path string) (Config, error) {
 	var c Config
 	if _, err := os.Stat(path); err != nil {
+		// needed due to panicking in ctrl+c binding (library limitation)
+		defer handleExit()
 		// if the config path doesnt exist
 		// run configuration create with suggestions
 		gencon.New(
@@ -112,6 +116,11 @@ func LoadConfig(path string) (Config, error) {
 			prompt.OptionPrefixTextColor(prompt.Fuchsia),
 			// since we have a file completer
 			prompt.OptionCompletionWordSeparator("/"),
+			// handle ctrl+c exit
+			prompt.OptionAddKeyBind(prompt.KeyBind{
+				Key: prompt.ControlC,
+				Fn:  promptExit,
+			}),
 		).Run(&c)
 		// save yaml file
 		data, err := yaml.Marshal(c)
@@ -125,4 +134,23 @@ func LoadConfig(path string) (Config, error) {
 	}
 	err := LoadYaml(path, &c)
 	return c, err
+}
+
+type Exit int
+
+func promptExit(_ *prompt.Buffer) {
+	panic(Exit(0))
+}
+
+func handleExit() {
+	v := recover()
+	switch v.(type) {
+	case nil:
+		return
+	case Exit:
+		vInt, _ := v.(int)
+		os.Exit(vInt)
+	default:
+		fmt.Printf("%+v", v)
+	}
 }
