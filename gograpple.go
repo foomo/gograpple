@@ -28,6 +28,7 @@ type Grapple struct {
 	kubeCmd    *exec.KubectlCmd
 	dockerCmd  *exec.DockerCmd
 	goCmd      *exec.GoCmd
+	helmCmd    *exec.HelmCmd
 }
 
 func NewGrapple(l *logrus.Entry, namespace, deployment string) (*Grapple, error) {
@@ -35,6 +36,7 @@ func NewGrapple(l *logrus.Entry, namespace, deployment string) (*Grapple, error)
 	g.kubeCmd = exec.NewKubectlCommand()
 	g.dockerCmd = exec.NewDockerCommand()
 	g.goCmd = exec.NewGoCommand()
+	g.helmCmd = exec.NewHelmCommand()
 	g.kubeCmd.Logger(l)
 	g.dockerCmd.Logger(l)
 	g.goCmd.Logger(l)

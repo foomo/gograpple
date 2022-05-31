@@ -21,7 +21,7 @@ func NewKubectlCommand() *KubectlCmd {
 	return &KubectlCmd{*NewCommand("kubectl")}
 }
 
-func (c KubectlCmd) RollbackDeployment(deployment string) *Cmd {
+func (c KubectlCmd) RolloutUndo(deployment string) *Cmd {
 	return c.Args("rollout", "undo", fmt.Sprintf("deployment/%v", deployment))
 }
 
