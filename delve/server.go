@@ -56,8 +56,8 @@ func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string,
 
 func (kds KubeDelveServer) buildCommand(binDest string, binArgs []string) []string {
 	cmd := []string{
-		"dlv", "exec", binDest, "--headless", "--api-version=2",
-		fmt.Sprintf("--listen=:%v", kds.port), "--accept-multiclient", "--continue",
+		"dlv", "exec", "--headless", "--api-version=2", "--accept-multiclient",
+		fmt.Sprintf("--listen=:%v", kds.port), binDest,
 	}
 	// cmd = append(cmd, "--log")
 	if len(binArgs) > 0 {

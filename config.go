@@ -44,6 +44,7 @@ func (c Config) MarshalYAML() (interface{}, error) {
 }
 
 func (c Config) SourcePathSuggest(d prompt.Document) []prompt.Suggest {
+	//todo file completer not working due to adding filtercontains on gencon
 	completer := completer.FilePathCompleter{
 		IgnoreCase: true,
 		Filter: func(fi os.FileInfo) bool {

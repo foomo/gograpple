@@ -78,11 +78,12 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		// port forward to pod with delve server
 		dclog := g.componentLog("client")
 		g.portForwardDelve(dclog, ctx, pod, host, port)
-		// check server state with delve client
-		if err := g.checkDelveConnection(dclog, ctx, 10, host, port); err != nil {
-			dclog.WithError(err).Error("couldnt connect to delver server")
-			return
-		}
+		//TODO recheck logic for connection to delve (telnet and dlv working)
+		// // check server state with delve client
+		// if err := g.checkDelveConnection(dclog, ctx, 10, host, port); err != nil {
+		// 	dclog.WithError(err).Error("couldnt connect to delver server")
+		// 	return
+		// }
 		// launch vscode
 		if vscode {
 			vlog := g.componentLog("vscode")
