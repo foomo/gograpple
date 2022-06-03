@@ -1,8 +1,6 @@
 package actions
 
 import (
-	"fmt"
-
 	"github.com/foomo/gograpple"
 	"github.com/foomo/gograpple/suggest"
 	"github.com/spf13/cobra"
@@ -35,15 +33,8 @@ var (
 				return err
 			}
 			defer g.Rollback()
-			switch c.Launch {
-			//TODO implement goland launch support
-			case "":
-			case "vscode":
-				flagVscode = true
-			default:
-				return fmt.Errorf("unsupported launch option %q", c.Launch)
-			}
-			return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, flagVscode)
+			// todo support binargs from config
+			return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, c.LaunchVscode, c.DelveContinue)
 		},
 	}
 )

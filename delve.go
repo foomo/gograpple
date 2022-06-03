@@ -16,7 +16,7 @@ import (
 const delveBin = "dlv"
 
 func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host string,
-	port int, vscode bool) error {
+	port int, vscode, delveContinue bool) error {
 	validateCtx := context.Background()
 	// validate k8s resources for delve session
 	if err := g.kubeCmd.ValidatePod(validateCtx, g.deployment, &pod); err != nil {
@@ -74,16 +74,16 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		dslog := g.componentLog("server")
 		dslog.Infof("starting delve server on %v:%v", host, port)
 		ds := delve.NewKubeDelveServer(dslog, g.deployment.Namespace, host, port)
-		ds.StartNoWait(ctx, pod, container, g.binDestination(), binArgs)
+		ds.StartNoWait(ctx, pod, container, g.binDestination(), binArgs, delveContinue)
 		// port forward to pod with delve server
 		dclog := g.componentLog("client")
 		g.portForwardDelve(dclog, ctx, pod, host, port)
 		//TODO recheck logic for connection to delve (telnet and dlv working)
-		// // check server state with delve client
-		// if err := g.checkDelveConnection(dclog, ctx, 10, host, port); err != nil {
-		// 	dclog.WithError(err).Error("couldnt connect to delver server")
-		// 	return
-		// }
+		// check server state with delve client
+		if err := g.checkDelveConnection(dclog, ctx, 10, host, port); err != nil {
+			dclog.WithError(err).Error("couldnt connect to delver server")
+			return
+		}
 		// launch vscode
 		if vscode {
 			vlog := g.componentLog("vscode")

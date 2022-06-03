@@ -32,8 +32,8 @@ func NewKubeDelveServer(l *logrus.Entry, namespace, host string, port int) *Kube
 }
 
 func (kds *KubeDelveServer) StartNoWait(ctx context.Context, pod, container string,
-	binDest string, binArgs []string) {
-	cmd := kds.kubeCmd.ExecPod(pod, container, kds.buildCommand(binDest, binArgs))
+	binDest string, binArgs []string, doContinue bool) {
+	cmd := kds.kubeCmd.ExecPod(pod, container, kds.getRunCmd(binDest, binArgs, doContinue))
 	cmd.PostStart(
 		func(p *os.Process) error {
 			kds.process = p
@@ -43,8 +43,8 @@ func (kds *KubeDelveServer) StartNoWait(ctx context.Context, pod, container stri
 }
 
 func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string,
-	binDest string, binArgs []string) error {
-	cmd := kds.kubeCmd.ExecPod(pod, container, kds.buildCommand(binDest, binArgs))
+	binDest string, binArgs []string, doContinue bool) error {
+	cmd := kds.kubeCmd.ExecPod(pod, container, kds.getRunCmd(binDest, binArgs, doContinue))
 	// execute command to run dlv on container
 	out, err := cmd.PostStart(
 		func(p *os.Process) error {
@@ -54,10 +54,14 @@ func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string,
 	return errors.WithMessage(err, out)
 }
 
-func (kds KubeDelveServer) buildCommand(binDest string, binArgs []string) []string {
+// doContinue will start the execution without waiting for a client connection
+func (kds KubeDelveServer) getRunCmd(binDest string, binArgs []string, doContinue bool) []string {
 	cmd := []string{
-		"dlv", "exec", "--headless", "--api-version=2", "--accept-multiclient",
-		fmt.Sprintf("--listen=:%v", kds.port), binDest,
+		"dlv", "exec", binDest, "--headless", "--api-version=2", "--accept-multiclient",
+		fmt.Sprintf("--listen=:%v", kds.port),
+	}
+	if doContinue {
+		cmd = append(cmd, "--continue")
 	}
 	// cmd = append(cmd, "--log")
 	if len(binArgs) > 0 {

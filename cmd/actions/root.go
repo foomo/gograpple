@@ -21,6 +21,7 @@ func init() {
 	delveCmd.Flags().Var(flagArgs, "args", "go file args")
 	delveCmd.Flags().Var(flagListen, "listen", "delve host:port to listen on")
 	delveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
+	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "start delve server execution without wiating for client connection")
 	delveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
 	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd, configCmd)
 }
@@ -39,6 +40,7 @@ var (
 	flagRollback   bool
 	flagListen     = NewHostPort("127.0.0.1", 0)
 	flagVscode     bool
+	flagContinue   bool
 	flagJSONLog    bool
 )
 
@@ -93,7 +95,7 @@ var (
 		Short: "start a headless delve debug server for .go input on a patched deployment",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return grapple.Delve(flagPod, flagContainer, flagSourcePath, flagArgs.items, flagListen.Host, flagListen.Port, flagVscode)
+			return grapple.Delve(flagPod, flagContainer, flagSourcePath, flagArgs.items, flagListen.Host, flagListen.Port, flagVscode, flagContinue)
 		},
 	}
 )
