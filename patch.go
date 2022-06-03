@@ -114,7 +114,7 @@ func (g Grapple) Patch(repo, dockerfile, container string, mounts []Mount) error
 
 	patchedImage := g.patchedImageName(repo)
 	completePatchedImage := fmt.Sprintf("%v:%v", patchedImage, defaultTag)
-	g.l.Infof("building patch image with %v", completePatchedImage)
+	g.l.Infof("building patch image %v", completePatchedImage)
 	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
 		fmt.Sprintf("IMAGE=%v", image), "-t", completePatchedImage,
 		"--platform", "linux/amd64").Run(ctx)
@@ -124,7 +124,7 @@ func (g Grapple) Patch(repo, dockerfile, container string, mounts []Mount) error
 
 	if repo != "" {
 		//contains a repo, push the built image
-		g.l.Infof("pushing patch image with %v", completePatchedImage)
+		g.l.Infof("pushing patch image %v", completePatchedImage)
 		_, err = g.dockerCmd.Push(patchedImage, defaultTag).Run(ctx)
 		if err != nil {
 			return err

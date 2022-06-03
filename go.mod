@@ -8,7 +8,7 @@ require (
 	github.com/go-delve/delve v1.8.2
 	github.com/life4/genesis v1.0.3
 	github.com/pkg/errors v0.9.1
-	github.com/runz0rd/gencon v0.0.0-20220601133909-a269abb9a8e1
+	github.com/runz0rd/gencon v0.0.0-20220603130908-7271aa711997
 	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/cobra v1.4.0
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b

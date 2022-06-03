@@ -1,9 +1,10 @@
 source_path: /Users/mpejanovic/Documents/dev/gograpple/test/app/main.go
-dockerfile: test/app/Dockerfile
+dockerfile: /Users/mpejanovic/Documents/dev/gograpple/test/app/Dockerfile
 cluster: k3d-local
 namespace: default
 deployment: example
 container: example
 repository: local-registry:56523
-launch: vscode
+launch_vscode: true
 listen_addr: :2345
+delve_continue: false
