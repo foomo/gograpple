@@ -22,7 +22,6 @@ func setUp(t *testing.T, context string) {
 }
 
 func delveSetUp(t *testing.T, g *Grapple) {
-	// todo
 	// make build
 	// make deploy, use testNamespace
 	// patch
