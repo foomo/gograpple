@@ -34,7 +34,9 @@ func (c Config) MarshalYAML() (interface{}, error) {
 		return nil, err
 	}
 	c.SourcePath = path.Join(cwd, c.SourcePath)
-	c.Dockerfile = path.Join(cwd, c.Dockerfile)
+	if c.Dockerfile != "" {
+		c.Dockerfile = path.Join(cwd, c.Dockerfile)
+	}
 	type alias Config
 	node := yaml.Node{}
 	err = node.Encode(alias(c))
