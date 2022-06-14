@@ -1,11 +1,11 @@
 metadata:
   annotations:
-    kubernetes.io/change-cause: "gograpple patch"
+    kubernetes.io/change-cause: {{ .ChangeCause }}
 spec:
   template:
     metadata:
-      labels:
-        {{ .Label }}: "true"
+      annotations:
+        app.kubernetes.io/created-by: {{ .CreatedBy }}
     spec:
       containers:
       - name: {{ .Container }}

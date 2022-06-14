@@ -321,6 +321,12 @@ func (c KubectlCmd) GetLatestRevision(ctx context.Context, deployment string) (i
 	return revision, nil
 }
 
+func (c KubectlCmd) UpdateChangeCause(deployment, cause string) *Cmd {
+	// kubectl annotate ingress mying kubernetes.io/ingress.class=value
+	return c.Args("annotate", fmt.Sprintf("deployment/%v", deployment),
+		fmt.Sprintf("kubernetes.io/change-cause=%v", cause))
+}
+
 func validateResource(resourceType, resource, suffix string, available []string) error {
 	if !stringIsInSlice(resource, available) {
 		return fmt.Errorf("%v %q not found %v, available: %v", resourceType, resource, suffix, strings.Join(available, ", "))

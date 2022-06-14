@@ -21,7 +21,8 @@ type Mount struct {
 }
 
 type patchValues struct {
-	Label          string
+	ChangeCause    string
+	CreatedBy      string
 	Deployment     string
 	Container      string
 	ConfigMapMount string
@@ -31,7 +32,8 @@ type patchValues struct {
 
 func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mount) *patchValues {
 	return &patchValues{
-		Label:          defaultPatchedLabel,
+		ChangeCause:    defaultPatchChangeCause,
+		CreatedBy:      defaultPatchCreator,
 		Deployment:     deployment,
 		Container:      container,
 		ConfigMapMount: defaultConfigMapMount,
@@ -164,8 +166,8 @@ func (g Grapple) isPatched() bool {
 	if err != nil {
 		return false
 	}
-	_, ok := d.Spec.Template.ObjectMeta.Labels[defaultPatchedLabel]
-	return ok
+	createdBy, ok := d.Spec.Template.ObjectMeta.Annotations[createdByAnnotation]
+	return ok && createdBy == defaultPatchCreator
 }
 
 func (g Grapple) rollback(ctx context.Context) error {
@@ -185,6 +187,10 @@ func (g Grapple) rollback(ctx context.Context) error {
 			return err
 		}
 		if !g.isPatched() {
+			// annotate rollback
+			if _, err = g.kubeCmd.UpdateChangeCause(g.deployment.Name, fmt.Sprintf("rollback to %v", i)).Run(ctx); err != nil {
+				return err
+			}
 			// if the deployment is unpatched, exit
 			return nil
 		}
