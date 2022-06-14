@@ -21,8 +21,13 @@ func NewKubectlCommand() *KubectlCmd {
 	return &KubectlCmd{*NewCommand("kubectl")}
 }
 
-func (c KubectlCmd) RolloutUndo(deployment string) *Cmd {
-	return c.Args("rollout", "undo", fmt.Sprintf("deployment/%v", deployment))
+func (c KubectlCmd) RolloutUndo(deployment string, revision int) *Cmd {
+	return c.Args("rollout", "undo", fmt.Sprintf("deployment/%v", deployment),
+		"--to-revision", fmt.Sprint(revision))
+}
+
+func (c KubectlCmd) RolloutUndoToPrevious(deployment string) *Cmd {
+	return c.RolloutUndo(deployment, 0)
 }
 
 func (c KubectlCmd) WaitForRollout(deployment, timeout string) *Cmd {
@@ -298,6 +303,22 @@ func (c KubectlCmd) ValidateContainer(d apps.Deployment, container *string) erro
 		*container = d.Name
 	}
 	return validateResource("container", *container, fmt.Sprintf("for deployment %q", d.Name), c.GetContainers(d))
+}
+
+func (c KubectlCmd) GetLatestRevision(ctx context.Context, deployment string) (int, error) {
+	// kubectl rollout history deployment/<> | tail -2 | cut -d ' ' -f1
+	// since were piping well be using bash
+	out, err := NewCommand("bash").
+		Args("-c", fmt.Sprintf("kubectl rollout history deployment/%v | tail -2 | cut -d ' ' -f1", deployment)).
+		Run(ctx)
+	if err != nil {
+		return 0, err
+	}
+	revision, err := strconv.Atoi(strings.Trim(out, "\n"))
+	if err != nil {
+		return 0, err
+	}
+	return revision, nil
 }
 
 func validateResource(resourceType, resource, suffix string, available []string) error {

@@ -169,7 +169,7 @@ func (g Grapple) isPatched() bool {
 }
 
 func (g Grapple) rollback(ctx context.Context) error {
-	revision, err := g.helmCmd.GetLatestRevision(ctx, g.deployment.Name)
+	revision, err := g.kubeCmd.GetLatestRevision(ctx, g.deployment.Name)
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (g Grapple) rollback(ctx context.Context) error {
 			g.l.Warn("invalid patch state! label present but no configmap found")
 		}
 		g.l.Infof("rolling back deployment %v to revision %v", g.deployment.Name, i)
-		if _, err = g.helmCmd.Rollback(g.deployment.Name, i).Run(ctx); err != nil {
+		if _, err = g.kubeCmd.RolloutUndo(g.deployment.Name, i).Run(ctx); err != nil {
 			return err
 		}
 		if !g.isPatched() {

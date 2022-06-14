@@ -16,7 +16,6 @@ import (
 
 type Config struct {
 	SourcePath    string `yaml:"source_path"`
-	Dockerfile    string `yaml:"dockerfile,omitempty"`
 	Cluster       string `yaml:"cluster"`
 	Namespace     string `yaml:"namespace" depends:"Cluster"`
 	Deployment    string `yaml:"deployment" depends:"Namespace"`
@@ -25,6 +24,7 @@ type Config struct {
 	LaunchVscode  bool   `yaml:"launch_vscode,omitempty"`
 	ListenAddr    string `yaml:"listen_addr,omitempty"`
 	DelveContinue bool   `yaml:"delve_continue,omitempty"`
+	Dockerfile    string `yaml:"dockerfile,omitempty"`
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
@@ -51,16 +51,6 @@ func (c Config) SourcePathSuggest(d prompt.Document) []prompt.Suggest {
 		IgnoreCase: true,
 		Filter: func(fi os.FileInfo) bool {
 			return fi.IsDir() || strings.HasSuffix(fi.Name(), ".go")
-		},
-	}
-	return completer.Complete(d)
-}
-
-func (c Config) DockerfileSuggest(d prompt.Document) []prompt.Suggest {
-	completer := completer.FilePathCompleter{
-		IgnoreCase: true,
-		Filter: func(fi os.FileInfo) bool {
-			return fi.IsDir() || strings.Contains(fi.Name(), "Dockerfile")
 		},
 	}
 	return completer.Complete(d)
@@ -108,6 +98,16 @@ func (c Config) ListenAddrSuggest(d prompt.Document) []prompt.Suggest {
 
 func (c Config) DelveContinueSuggest(d prompt.Document) []prompt.Suggest {
 	return []prompt.Suggest{{Text: "true"}, {Text: "false"}}
+}
+
+func (c Config) DockerfileSuggest(d prompt.Document) []prompt.Suggest {
+	completer := completer.FilePathCompleter{
+		IgnoreCase: true,
+		Filter: func(fi os.FileInfo) bool {
+			return fi.IsDir() || strings.Contains(fi.Name(), "Dockerfile")
+		},
+	}
+	return completer.Complete(d)
 }
 
 func LoadConfig(path string) (Config, error) {

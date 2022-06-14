@@ -20,9 +20,10 @@ func (c HelmCmd) Rollback(deployment string, revision int) *Cmd {
 }
 
 func (c HelmCmd) GetLatestRevision(ctx context.Context, deployment string) (int, error) {
-	command := "helm history example | tail -1 | cut -d ' ' -f1"
 	// since were piping well be using bash
-	out, err := NewCommand("bash").Args("-c", command).Run(ctx)
+	out, err := NewCommand("bash").
+		Args("-c", fmt.Sprintf("helm history %v | tail -1 | cut -d ' ' -f1", deployment)).
+		Run(ctx)
 	if err != nil {
 		return 0, err
 	}
