@@ -42,7 +42,7 @@ func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mo
 	}
 }
 
-func (g Grapple) Patch(repo, dockerfile, container string, mounts []Mount) error {
+func (g Grapple) Patch(repo, image, platform, container string, mounts []Mount) error {
 	ctx := context.Background()
 	if g.isPatched() {
 		g.l.Warn("deployment already patched, rolling back first")
@@ -52,6 +52,16 @@ func (g Grapple) Patch(repo, dockerfile, container string, mounts []Mount) error
 	}
 	if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
 		return err
+	}
+
+	// check image platform with configured platform
+	imagePlatform, err := g.dockerCmd.ImageInspect("-f", "{{.Os}}/{{.Architecture}}", image).Run(ctx)
+	if err != nil {
+		return err
+	}
+	if platform != imagePlatform {
+		return fmt.Errorf("Provided image %q was built for platform %q, and configured platform is %q, please rebuild for correct platform",
+			image, imagePlatform, platform)
 	}
 
 	g.l.Infof("creating a configmap with deployment data")
@@ -101,25 +111,12 @@ func (g Grapple) Patch(repo, dockerfile, container string, mounts []Mount) error
 		return err
 	}
 
-	image := defaultImage
-	if dockerfile != "" {
-		g.l.Infof("building dockerfile %v", dockerfile)
-		_, err = g.dockerCmd.Build(
-			filepath.Dir(dockerfile),
-			"-f", dockerfile, "-t", patchImageName,
-			"--platform", "linux/amd64").Run(ctx)
-		if err != nil {
-			return err
-		}
-		image = patchImageName
-	}
-
 	patchedImage := g.patchedImageName(repo)
 	completePatchedImage := fmt.Sprintf("%v:%v", patchedImage, defaultTag)
 	g.l.Infof("building patch image %v", completePatchedImage)
 	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
 		fmt.Sprintf("IMAGE=%v", image), "-t", completePatchedImage,
-		"--platform", "linux/amd64").Run(ctx)
+		"--platform", platform).Run(ctx)
 	if err != nil {
 		return err
 	}
@@ -142,15 +139,12 @@ func (g Grapple) Patch(repo, dockerfile, container string, mounts []Mount) error
 		return err
 	}
 
-	g.l.Infof("patching deployment for development %s", g.deployment.Name)
+	g.l.Infof("patching deployment %s", g.deployment.Name)
 	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run(ctx)
 	if err != nil {
 		return err
 	}
-
-	g.l.Infof("waiting for deployment to get ready")
-	_, err = g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run(ctx)
-	return err
+	return nil
 }
 
 func (g *Grapple) Rollback() error {

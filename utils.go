@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"text/template"
 	"time"
 
@@ -137,4 +138,12 @@ func LoadYaml(path string, data interface{}) error {
 		return err
 	}
 	return yaml.Unmarshal(bs, data)
+}
+
+func GetPlatformInfo(platform string) (os, arch string, err error) {
+	pieces := strings.Split(platform, "/")
+	if len(pieces) != 2 {
+		return os, arch, fmt.Errorf("invalid format for platform %q", platform)
+	}
+	return pieces[0], pieces[1], nil
 }

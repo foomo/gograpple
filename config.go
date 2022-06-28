@@ -24,7 +24,8 @@ type Config struct {
 	LaunchVscode  bool   `yaml:"launch_vscode,omitempty"`
 	ListenAddr    string `yaml:"listen_addr,omitempty"`
 	DelveContinue bool   `yaml:"delve_continue,omitempty"`
-	Dockerfile    string `yaml:"dockerfile,omitempty"`
+	Image         string `yaml:"image,omitempty"`
+	Platform      string `yaml:"platform,omitempty"`
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
@@ -34,9 +35,6 @@ func (c Config) MarshalYAML() (interface{}, error) {
 		return nil, err
 	}
 	c.SourcePath = path.Join(cwd, c.SourcePath)
-	if c.Dockerfile != "" {
-		c.Dockerfile = path.Join(cwd, c.Dockerfile)
-	}
 	type alias Config
 	node := yaml.Node{}
 	err = node.Encode(alias(c))
@@ -108,6 +106,18 @@ func (c Config) DockerfileSuggest(d prompt.Document) []prompt.Suggest {
 		},
 	}
 	return completer.Complete(d)
+}
+
+func (c Config) PlatformSuggest(d prompt.Document) []prompt.Suggest {
+	return []prompt.Suggest{{Text: "linux/amd64"}, {Text: "linux/arm64"}}
+}
+
+func (c Config) ImageSuggest(d prompt.Document) []prompt.Suggest {
+	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
+	suggestions := suggest.Completer(d, suggest.MustList(func() ([]string, error) {
+		return kc.ListImages(c.Namespace, c.Deployment)
+	}))
+	return append(suggestions, prompt.Suggest{Text: defaultImage})
 }
 
 func LoadConfig(path string) (Config, error) {
