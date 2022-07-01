@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 )
 
 var (
@@ -55,10 +56,11 @@ func (g Grapple) Patch(repo, image, platform, container string, mounts []Mount) 
 	}
 
 	// check image platform with configured platform
-	imagePlatform, err := g.dockerCmd.ImageInspect("-f", "{{.Os}}/{{.Architecture}}", image).Run(ctx)
+	out, err := g.dockerCmd.ImageInspect("-f", "{{.Os}}/{{.Architecture}}", image).Run(ctx)
 	if err != nil {
 		return err
 	}
+	imagePlatform := strings.TrimRight(out, "\n")
 	if platform != imagePlatform {
 		return fmt.Errorf("Provided image %q was built for platform %q, and configured platform is %q, please rebuild for correct platform",
 			image, imagePlatform, platform)
