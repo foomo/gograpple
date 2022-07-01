@@ -14,7 +14,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagPod, "pod", "p", "", "pod name (default most recent one)")
 	rootCmd.PersistentFlags().StringVarP(&flagContainer, "container", "c", "", "container name (default deployment name)")
 	patchCmd.Flags().StringVar(&flagImage, "image", "alpine:latest", "image to be used for patching (default alpine:latest)")
-	patchCmd.Flags().StringVar(&flagPlatform, "image", "linux/amd64", "platform to be used for patching (default linux/amd64)")
+	patchCmd.Flags().StringVar(&flagPlatform, "platform", "linux/amd64", "platform to be used for patching (default linux/amd64)")
 	patchCmd.Flags().StringVarP(&flagRepo, "repo", "r", "", "repository to be used for pushing patched image (default none)")
 	patchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
 	patchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
