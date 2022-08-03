@@ -11,8 +11,7 @@ import (
 )
 
 type Cmd struct {
-	l *logrus.Entry
-	// actual        *exec.Cmd
+	l             *logrus.Entry
 	command       []string
 	cwd           string
 	env           []string
@@ -20,12 +19,12 @@ type Cmd struct {
 	stdoutWriters []io.Writer
 	stderrWriters []io.Writer
 	wait          bool
-	// t             time.Duration
 	preStartFunc  func() error
 	postStartFunc func(p *os.Process) error
 	postEndFunc   func() error
 	chanStarted   chan struct{}
 	chanDone      chan struct{}
+	quiet         bool
 }
 
 func NewCommand(name string) *Cmd {
@@ -108,6 +107,11 @@ func (c *Cmd) Logger(l *logrus.Entry) *Cmd {
 	return c
 }
 
+func (c *Cmd) Quiet() *Cmd {
+	c.quiet = true
+	return c
+}
+
 func (c *Cmd) Run(ctx context.Context) (string, error) {
 	return c.run(goexec.CommandContext(ctx, c.command[0], c.command[1:]...))
 }
@@ -132,7 +136,11 @@ func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	if c.l != nil {
 		c.l.Tracef("executing %q in %q", cmd.String(), cmd.Dir)
 		c.stdoutWriters = append(c.stdoutWriters, c.l.WriterLevel(logrus.TraceLevel))
-		c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.WarnLevel))
+		if c.quiet {
+			c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.TraceLevel))
+		} else {
+			c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.WarnLevel))
+		}
 	}
 	cmd.Stdout = io.MultiWriter(c.stdoutWriters...)
 	cmd.Stderr = io.MultiWriter(c.stderrWriters...)
