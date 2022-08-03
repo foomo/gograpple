@@ -40,7 +40,7 @@ func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mo
 	}
 }
 
-func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error {
+func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
 	ctx := context.Background()
 	if g.isPatched() {
 		g.l.Warn("deployment already patched, rolling back first")
@@ -102,16 +102,32 @@ func (g Grapple) Patch(repo, image, tag, container string, mounts []Mount) error
 		return err
 	}
 
-	pathedImageName := g.patchedImageName(repo)
-	g.l.Infof("building patch image with %v:%v", pathedImageName, tag)
-	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
-		fmt.Sprintf("IMAGE=%v:%v", image, tag), "-t", pathedImageName,
-		"--platform", "linux/amd64").Run(ctx)
+	// get image used in the deployment so we can and platform
+	deploymentImage, err := g.kubeCmd.GetImage(ctx, g.deployment, container)
+	if err != nil {
+		return err
+	}
+	// get repo from deployment image
+	imageRepo, _, _, err := ParseImage(deploymentImage)
+	if err != nil {
+		return err
+	}
+	// get platform from deployment image
+	deploymentPlatform, err := g.dockerCmd.GetPlatform(ctx, deploymentImage)
 	if err != nil {
 		return err
 	}
 
-	if repo != "" {
+	pathedImageName := g.patchedImageName(imageRepo)
+	g.l.Infof("building patch image with %v:%v", pathedImageName, tag)
+	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
+		fmt.Sprintf("IMAGE=%v:%v", image, tag), "-t", fmt.Sprintf("%v:%v", pathedImageName, tag),
+		"--platform", deploymentPlatform.String()).Run(ctx)
+	if err != nil {
+		return err
+	}
+
+	if imageRepo != "" {
 		//contains a repo, push the built image
 		g.l.Infof("pushing patch image with %v:%v", pathedImageName, tag)
 		_, err = g.dockerCmd.Push(pathedImageName, tag).Run(ctx)

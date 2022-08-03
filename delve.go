@@ -5,18 +5,17 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/foomo/gograpple/delve"
+	"github.com/foomo/gograpple/exec"
 	"github.com/sirupsen/logrus"
 )
 
 const delveBin = "dlv"
 
 func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host string,
-	port int, vscode bool) error {
+	port int, vscode, delveContinue bool) error {
 	validateCtx := context.Background()
 	// validate k8s resources for delve session
 	if err := g.kubeCmd.ValidatePod(validateCtx, g.deployment, &pod); err != nil {
@@ -56,10 +55,23 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 			clog.Error(err)
 			return
 		}
+
 		// deploy bin
 		dlog := g.componentLog("deploy")
 		dlog.Info("building and deploying bin")
-		if err := g.deployBin(ctx, pod, container, goModPath, sourcePath); err != nil {
+		// get image used in the deployment so we can and platform
+		deploymentImage, err := g.kubeCmd.GetImage(ctx, g.deployment, container)
+		if err != nil {
+			dlog.Error(err)
+			return
+		}
+		// get platform from deployment image
+		deploymentPlatform, err := g.dockerCmd.GetPlatform(ctx, deploymentImage)
+		if err != nil {
+			dlog.Error(err)
+			return
+		}
+		if err := g.deployBin(ctx, pod, container, goModPath, sourcePath, deploymentPlatform); err != nil {
 			dlog.Error(err)
 			return
 		}
@@ -67,7 +79,7 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		dslog := g.componentLog("server")
 		dslog.Infof("starting delve server on %v:%v", host, port)
 		ds := delve.NewKubeDelveServer(dslog, g.deployment.Namespace, host, port)
-		ds.StartNoWait(ctx, pod, container, g.binDestination(), binArgs)
+		ds.StartNoWait(ctx, pod, container, g.binDestination(), binArgs, delveContinue)
 		// port forward to pod with delve server
 		dclog := g.componentLog("client")
 		g.portForwardDelve(dclog, ctx, pod, host, port)
@@ -121,32 +133,14 @@ func (g Grapple) cleanupPIDs(ctx context.Context, pod, container string) error {
 	})
 }
 
-func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourcePath string) error {
+func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourcePath string, p *exec.Platform) error {
 	// build bin
 	binSource := path.Join(os.TempDir(), g.binName())
-	var relInputs []string
-	inputInfo, errInputInfo := os.Stat(sourcePath)
-	if errInputInfo != nil {
-		return errInputInfo
-	}
-	if inputInfo.IsDir() {
-		if files, err := os.ReadDir(sourcePath); err != nil {
-			return err
-		} else {
-			for _, file := range files {
-				if path.Ext(file.Name()) == ".go" {
-					relInputs = append(relInputs, strings.TrimPrefix(path.Join(sourcePath,
-						file.Name()), goModPath+string(filepath.Separator)))
-				}
-			}
-		}
-	} else {
-		relInputs = append(relInputs, strings.TrimPrefix(sourcePath, goModPath+string(filepath.Separator)))
-	}
-
-	_, errBuild := g.goCmd.Build(goModPath, binSource, relInputs, "-gcflags", "-N -l").Env("GOOS=linux", "GOARCH=amd64").Run(ctx)
-	if errBuild != nil {
-		return errBuild
+	_, err := g.goCmd.Build(binSource, []string{"."}, "-gcflags", "-N -l").
+		Env(fmt.Sprintf("GOOS=%v", p.OS), fmt.Sprintf("GOARCH=%v", p.Arch)).
+		Cwd(sourcePath).Run(ctx)
+	if err != nil {
+		return err
 	}
 	// copy bin to pod
 	_, errCopyToPod := g.kubeCmd.CopyToPod(pod, container, binSource, g.binDestination()).Run(ctx)

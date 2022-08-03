@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"text/template"
 	"time"
 
@@ -127,4 +128,17 @@ func stringIsInSlice(a string, list []string) bool {
 		}
 	}
 	return false
+}
+
+func ParseImage(s string) (repo, name, tag string, err error) {
+	pieces := strings.Split(s, "/")
+	switch true {
+	case len(pieces) == 1 && pieces[0] == s:
+		imageTag := strings.Split(s, ":")
+		return "", imageTag[0], imageTag[1], nil
+	case len(pieces) > 1:
+		imageTag := strings.Split(pieces[len(pieces)-1], ":")
+		return strings.Join(pieces[:len(pieces)-1], "/"), imageTag[0], imageTag[1], nil
+	}
+	return "", "", "", fmt.Errorf("invalid image value %q provided", s)
 }

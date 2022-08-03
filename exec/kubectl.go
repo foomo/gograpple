@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	apps "k8s.io/api/apps/v1"
+	v1 "k8s.io/api/apps/v1"
 	core "k8s.io/api/core/v1"
 )
 
@@ -258,6 +259,15 @@ func (c KubectlCmd) GetPIDsOf(ctx context.Context, pod, container, process strin
 		stripped = append(stripped, strings.Trim(rawPid, "\n"))
 	}
 	return stripped, nil
+}
+
+func (c KubectlCmd) GetImage(ctx context.Context, deployment v1.Deployment, container string) (string, error) {
+	for _, c := range deployment.Spec.Template.Spec.Containers {
+		if c.Name == container {
+			return c.Image, nil
+		}
+	}
+	return "", fmt.Errorf("couldnt find image for deployment %v in container %v", deployment.Name, container)
 }
 
 func (c KubectlCmd) ValidateNamespace(ctx context.Context, namespace string) error {

@@ -55,7 +55,7 @@ func TestGrapple_Delve(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := g.Delve("", "", tt.args.sourcePath, nil, tt.args.host, tt.args.port, tt.args.vscode); (err != nil) != tt.wantErr {
+			if err := g.Delve("", "", tt.args.sourcePath, nil, tt.args.host, tt.args.port, tt.args.vscode, true); (err != nil) != tt.wantErr {
 				t.Errorf("Grapple.Delve() error = %v, wantErr %v", err, tt.wantErr)
 			}
 		})
