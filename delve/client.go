@@ -37,11 +37,6 @@ func (kdc KubeDelveClient) ValidateState() error {
 	if state.Exited {
 		// Exited indicates whether the debugged process has exited.
 		return fmt.Errorf("delve debugged process has exited")
-	} else if !state.Running {
-		// Running is true if the process is running and no other information can be collected.
-		// theres a case when you are in a breakpoint on a zombie process
-		// dlv will not handle that gracefully
-		return fmt.Errorf("delve debugged process is not running (zombie/breakpoint)")
 	} else {
 		// were good
 		return nil

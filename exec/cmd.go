@@ -130,7 +130,7 @@ func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	c.stdoutWriters = append(c.stdoutWriters, combinedBuf)
 	c.stderrWriters = append(c.stderrWriters, combinedBuf)
 	if c.l != nil {
-		c.l.Tracef("executing %q", cmd.String())
+		c.l.Tracef("executing %q in %q", cmd.String(), cmd.Dir)
 		c.stdoutWriters = append(c.stdoutWriters, c.l.WriterLevel(logrus.TraceLevel))
 		c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.WarnLevel))
 	}
