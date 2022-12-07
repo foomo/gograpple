@@ -16,21 +16,15 @@ const delveBin = "dlv"
 
 func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host string,
 	port int, vscode, delveContinue bool) error {
-	validateCtx := context.Background()
-	// validate k8s resources for delve session
-	if err := g.kubeCmd.ValidatePod(validateCtx, g.deployment, &pod); err != nil {
-		return err
-	}
-	if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
-		return err
-	}
+	ctx := context.Background()
 	if !g.isPatched() {
 		return fmt.Errorf("deployment not patched, stopping delve")
 	}
+
 	// populate bin args if empty
 	if len(binArgs) == 0 {
 		var err error
-		d, err := g.kubeCmd.GetDeploymentFromConfigMap(validateCtx, g.DeploymentConfigMapName(),
+		d, err := g.kubeCmd.GetDeploymentFromConfigMap(ctx, g.DeploymentConfigMapName(),
 			defaultConfigMapDeploymentKey)
 		if err != nil {
 			return err
@@ -48,6 +42,22 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 	}
 
 	RunWithInterrupt(g.l, func(ctx context.Context) {
+		g.l.Infof("waiting for deployment to get ready")
+		_, err := g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run(ctx)
+		if err != nil {
+			g.l.Error(err)
+			return
+		}
+		// validate and get k8s resources for delve session
+		if err := g.kubeCmd.ValidatePod(context.Background(), g.deployment, &pod); err != nil {
+			g.l.Error(err)
+			return
+		}
+		if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
+			g.l.Error(err)
+			return
+		}
+
 		// run pre-start cleanup
 		clog := g.componentLog("cleanup")
 		clog.Info("running pre-start cleanup")
@@ -59,7 +69,7 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		// deploy bin
 		dlog := g.componentLog("deploy")
 		dlog.Info("building and deploying bin")
-		// get image used in the deployment so we can and platform
+		// get image used in the deployment so we can get platform
 		deploymentImage, err := g.kubeCmd.GetImage(ctx, g.deployment, container)
 		if err != nil {
 			dlog.Error(err)
@@ -136,9 +146,8 @@ func (g Grapple) cleanupPIDs(ctx context.Context, pod, container string) error {
 func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourcePath string, p *exec.Platform) error {
 	// build bin
 	binSource := path.Join(os.TempDir(), g.binName())
-	_, err := g.goCmd.Build(binSource, []string{"."}, "-gcflags", "-N -l").
-		Env(fmt.Sprintf("GOOS=%v", p.OS), fmt.Sprintf("GOARCH=%v", p.Arch)).
-		Cwd(sourcePath).Run(ctx)
+	_, err := g.goCmd.Build(binSource, []string{sourcePath}, "-gcflags", "-N -l").
+		Env(fmt.Sprintf("GOOS=%v", p.OS), fmt.Sprintf("GOARCH=%v", p.Arch), fmt.Sprintf("CGO_ENABLED=%v", 0)).Run(ctx)
 	if err != nil {
 		return err
 	}

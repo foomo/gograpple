@@ -22,8 +22,13 @@ func NewKubectlCommand() *KubectlCmd {
 	return &KubectlCmd{*NewCommand("kubectl")}
 }
 
-func (c KubectlCmd) RollbackDeployment(deployment string) *Cmd {
-	return c.Args("rollout", "undo", fmt.Sprintf("deployment/%v", deployment))
+func (c KubectlCmd) RolloutUndo(deployment string, revision int) *Cmd {
+	return c.Args("rollout", "undo", fmt.Sprintf("deployment/%v", deployment),
+		"--to-revision", fmt.Sprint(revision))
+}
+
+func (c KubectlCmd) RolloutUndoToPrevious(deployment string) *Cmd {
+	return c.RolloutUndo(deployment, 0)
 }
 
 func (c KubectlCmd) WaitForRollout(deployment, timeout string) *Cmd {
@@ -31,14 +36,15 @@ func (c KubectlCmd) WaitForRollout(deployment, timeout string) *Cmd {
 		"-w", "--timeout", timeout)
 }
 
-func (c KubectlCmd) GetMostRecentPodBySelectors(ctx context.Context,
+func (c KubectlCmd) GetMostRecentRunningPodBySelectors(ctx context.Context,
 	selectors map[string]string) (string, error) {
 	var selector []string
 	for k, v := range selectors {
 		selector = append(selector, fmt.Sprintf("%v=%v", k, v))
 	}
 	out, err := c.Args("--selector", strings.Join(selector, ","),
-		"get", "pods", "--sort-by=.status.startTime", "-o", "name").Run(ctx)
+		"get", "pods", "--field-selector=status.phase=Running",
+		"--sort-by=.status.startTime", "-o", "name").Run(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -289,7 +295,7 @@ func (c KubectlCmd) ValidateDeployment(ctx context.Context, namespace, deploymen
 func (c KubectlCmd) ValidatePod(ctx context.Context, d apps.Deployment, pod *string) error {
 	if *pod == "" {
 		var err error
-		*pod, err = c.GetMostRecentPodBySelectors(ctx, d.Spec.Selector.MatchLabels)
+		*pod, err = c.GetMostRecentRunningPodBySelectors(ctx, d.Spec.Selector.MatchLabels)
 		if err != nil || *pod == "" {
 			return err
 		}
@@ -307,6 +313,28 @@ func (c KubectlCmd) ValidateContainer(d apps.Deployment, container *string) erro
 		*container = d.Name
 	}
 	return validateResource("container", *container, fmt.Sprintf("for deployment %q", d.Name), c.GetContainers(d))
+}
+
+func (c KubectlCmd) GetLatestRevision(ctx context.Context, deployment string) (int, error) {
+	// kubectl rollout history deployment/<> | tail -2 | cut -d ' ' -f1
+	// since were piping well be using bash
+	out, err := NewCommand("bash").
+		Args("-c", fmt.Sprintf("kubectl rollout history deployment/%v | tail -2 | cut -d ' ' -f1", deployment)).
+		Run(ctx)
+	if err != nil {
+		return 0, err
+	}
+	revision, err := strconv.Atoi(strings.Trim(out, "\n"))
+	if err != nil {
+		return 0, err
+	}
+	return revision, nil
+}
+
+func (c KubectlCmd) UpdateChangeCause(deployment, cause string) *Cmd {
+	// kubectl annotate ingress mying kubernetes.io/ingress.class=value
+	return c.Args("annotate", fmt.Sprintf("deployment/%v", deployment),
+		fmt.Sprintf("kubernetes.io/change-cause=%v", cause))
 }
 
 func validateResource(resourceType, resource, suffix string, available []string) error {
