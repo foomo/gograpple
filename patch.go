@@ -8,7 +8,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 )
 
 var (
@@ -43,7 +42,7 @@ func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mo
 	}
 }
 
-func (g Grapple) Patch(repo, image, platform, container string, mounts []Mount) error {
+func (g Grapple) Patch(repo, image, container string, mounts []Mount) error {
 	ctx := context.Background()
 	if g.isPatched() {
 		g.l.Warn("deployment already patched, rolling back first")
@@ -55,23 +54,12 @@ func (g Grapple) Patch(repo, image, platform, container string, mounts []Mount) 
 		return err
 	}
 
-	// check image platform with configured platform
-	out, err := g.dockerCmd.ImageInspect("-f", "{{.Os}}/{{.Architecture}}", image).Run(ctx)
-	if err != nil {
-		return err
-	}
-	imagePlatform := strings.TrimRight(out, "\n")
-	if platform != imagePlatform {
-		return fmt.Errorf("Provided image %q was built for platform %q, and configured platform is %q, please rebuild for correct platform",
-			image, imagePlatform, platform)
-	}
-
 	g.l.Infof("creating a configmap with deployment data")
 	bs, err := json.Marshal(g.deployment)
 	if err != nil {
 		return err
 	}
-	_, _ = g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName()).Run(ctx)
+	_, _ = g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName()).Quiet().Run(ctx)
 	data := map[string]string{defaultConfigMapDeploymentKey: string(bs)}
 	_, err = g.kubeCmd.CreateConfigMap(g.DeploymentConfigMapName(), data).Run(ctx)
 	if err != nil {
@@ -113,20 +101,35 @@ func (g Grapple) Patch(repo, image, platform, container string, mounts []Mount) 
 		return err
 	}
 
-	patchedImage := g.patchedImageName(repo)
-	completePatchedImage := fmt.Sprintf("%v:%v", patchedImage, defaultTag)
-	g.l.Infof("building patch image %v", completePatchedImage)
-	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
-		fmt.Sprintf("IMAGE=%v", image), "-t", completePatchedImage,
-		"--platform", platform).Run(ctx)
+	// get image used in the deployment so we can and platform
+	deploymentImage, err := g.kubeCmd.GetImage(ctx, g.deployment, container)
+	if err != nil {
+		return err
+	}
+	// get repo from deployment image
+	imageRepo, _, _, err := ParseImage(deploymentImage)
+	if err != nil {
+		return err
+	}
+	// get platform from deployment image
+	deploymentPlatform, err := g.dockerCmd.GetPlatform(ctx, deploymentImage)
 	if err != nil {
 		return err
 	}
 
-	if repo != "" {
+	pathedImageName := g.patchedImageName(imageRepo)
+	g.l.Infof("building patch image %v:%v", pathedImageName, defaultTag)
+	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
+		fmt.Sprintf("IMAGE=%v:%v", image, defaultTag), "-t", fmt.Sprintf("%v:%v", pathedImageName, defaultTag),
+		"--platform", deploymentPlatform.String()).Quiet().Run(ctx)
+	if err != nil {
+		return err
+	}
+
+	if imageRepo != "" {
 		//contains a repo, push the built image
-		g.l.Infof("pushing patch image %v", completePatchedImage)
-		_, err = g.dockerCmd.Push(patchedImage, defaultTag).Run(ctx)
+		g.l.Infof("pushing patch image %v:%v", pathedImageName, defaultTag)
+		_, err = g.dockerCmd.Push(pathedImageName, defaultTag).Run(ctx)
 		if err != nil {
 			return err
 		}
@@ -135,13 +138,13 @@ func (g Grapple) Patch(repo, image, platform, container string, mounts []Mount) 
 	g.l.Infof("rendering deployment patch template")
 	patch, err := renderTemplate(
 		path.Join(theHookPath, devDeploymentPatchFile),
-		g.newPatchValues(g.deployment.Name, container, completePatchedImage, mounts),
+		g.newPatchValues(g.deployment.Name, container, fmt.Sprintf("%v:%v", pathedImageName, defaultTag), mounts),
 	)
 	if err != nil {
 		return err
 	}
 
-	g.l.Infof("patching deployment %s", g.deployment.Name)
+	g.l.Infof("patching deployment %s for development with patch", g.deployment.Name)
 	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run(ctx)
 	if err != nil {
 		return err

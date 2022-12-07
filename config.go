@@ -25,7 +25,6 @@ type Config struct {
 	ListenAddr    string `yaml:"listen_addr,omitempty"`
 	DelveContinue bool   `yaml:"delve_continue,omitempty"`
 	Image         string `yaml:"image,omitempty"`
-	Platform      string `yaml:"platform,omitempty"`
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {

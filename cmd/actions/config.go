@@ -30,12 +30,12 @@ var (
 				return err
 			}
 
-			if err := g.Patch(c.Repository, c.Image, c.Platform, c.Container, nil); err != nil {
+			if err := g.Patch(c.Repository, c.Image, c.Container, nil); err != nil {
 				return err
 			}
 			defer g.Rollback()
 			// todo support binargs from config
-			return g.Delve("", c.Container, c.SourcePath, c.Platform, nil, addr.Host, addr.Port, c.LaunchVscode, c.DelveContinue)
+			return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, c.LaunchVscode, c.DelveContinue)
 		},
 	}
 )
