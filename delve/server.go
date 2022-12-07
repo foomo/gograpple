@@ -27,7 +27,7 @@ func (kds KubeDelveServer) Port() int {
 
 func NewKubeDelveServer(l *logrus.Entry, namespace, host string, port int) *KubeDelveServer {
 	kubectl := exec.NewKubectlCommand()
-	kubectl.Logger(l).Args("-n", namespace)
+	kubectl.Logger(l).Quiet().Args("-n", namespace)
 	return &KubeDelveServer{host, port, kubectl, nil}
 }
 
