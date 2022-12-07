@@ -9,6 +9,7 @@ import (
 
 	"github.com/c-bata/go-prompt"
 	"github.com/c-bata/go-prompt/completer"
+	"github.com/foomo/gograpple/kubectl"
 	"github.com/foomo/gograpple/suggest"
 	"github.com/runz0rd/gencon"
 	"gopkg.in/yaml.v3"
@@ -54,34 +55,29 @@ func (c Config) SourcePathSuggest(d prompt.Document) []prompt.Suggest {
 }
 
 func (c Config) ClusterSuggest(d prompt.Document) []prompt.Suggest {
-	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
-	return suggest.Completer(d, suggest.MustList(kc.ListContexts))
+	return suggest.Completer(d, suggest.MustList(kubectl.ListContexts))
 }
 
 func (c Config) NamespaceSuggest(d prompt.Document) []prompt.Suggest {
-	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
-	kc.SetContext(c.Cluster)
-	return suggest.Completer(d, suggest.MustList(kc.ListNamespaces))
+	kubectl.SetContext(c.Cluster)
+	return suggest.Completer(d, suggest.MustList(kubectl.ListNamespaces))
 }
 
 func (c Config) DeploymentSuggest(d prompt.Document) []prompt.Suggest {
-	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return kc.ListDeployments(c.Namespace)
+		return kubectl.ListDeployments(c.Namespace)
 	}))
 }
 
 func (c Config) ContainerSuggest(d prompt.Document) []prompt.Suggest {
-	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return kc.ListContainers(c.Namespace, c.Deployment)
+		return kubectl.ListContainers(c.Namespace, c.Deployment)
 	}))
 }
 
 func (c Config) RepositorySuggest(d prompt.Document) []prompt.Suggest {
-	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return kc.ListRepositories(c.Namespace, c.Deployment)
+		return kubectl.ListRepositories(c.Namespace, c.Deployment)
 	}))
 }
 
@@ -112,9 +108,8 @@ func (c Config) PlatformSuggest(d prompt.Document) []prompt.Suggest {
 }
 
 func (c Config) ImageSuggest(d prompt.Document) []prompt.Suggest {
-	kc := suggest.KubeConfig(suggest.DefaultKubeConfig)
 	suggestions := suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return kc.ListImages(c.Namespace, c.Deployment)
+		return kubectl.ListImages(c.Namespace, c.Deployment)
 	}))
 	return append(suggestions, prompt.Suggest{Text: defaultImage})
 }

@@ -146,9 +146,8 @@ func (g Grapple) cleanupPIDs(ctx context.Context, pod, container string) error {
 func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourcePath string, p *exec.Platform) error {
 	// build bin
 	binSource := path.Join(os.TempDir(), g.binName())
-	_, err := g.goCmd.Build(binSource, []string{"."}, "-gcflags", "-N -l").
-		Env(fmt.Sprintf("GOOS=%v", p.OS), fmt.Sprintf("GOARCH=%v", p.Arch)).
-		Cwd(sourcePath).Run(ctx)
+	_, err := g.goCmd.Build(binSource, []string{sourcePath}, "-gcflags", "-N -l").
+		Env(fmt.Sprintf("GOOS=%v", p.OS), fmt.Sprintf("GOARCH=%v", p.Arch), fmt.Sprintf("CGO_ENABLED=%v", 0)).Run(ctx)
 	if err != nil {
 		return err
 	}

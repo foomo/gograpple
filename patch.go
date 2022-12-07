@@ -120,7 +120,7 @@ func (g Grapple) Patch(repo, image, container string, mounts []Mount) error {
 	pathedImageName := g.patchedImageName(imageRepo)
 	g.l.Infof("building patch image %v:%v", pathedImageName, defaultTag)
 	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
-		fmt.Sprintf("IMAGE=%v:%v", image, defaultTag), "-t", fmt.Sprintf("%v:%v", pathedImageName, defaultTag),
+		fmt.Sprintf("IMAGE=%v", image), "-t", fmt.Sprintf("%v:%v", pathedImageName, defaultTag),
 		"--platform", deploymentPlatform.String()).Quiet().Run(ctx)
 	if err != nil {
 		return err
