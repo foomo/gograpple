@@ -318,13 +318,17 @@ func (c KubectlCmd) ValidateContainer(d apps.Deployment, container *string) erro
 func (c KubectlCmd) GetLatestRevision(ctx context.Context, deployment string) (int, error) {
 	// kubectl rollout history deployment/<> | tail -2 | cut -d ' ' -f1
 	// since were piping well be using bash
-	out, err := NewCommand("bash").
-		Args("-c", fmt.Sprintf("kubectl rollout history deployment/%v | tail -2 | cut -d ' ' -f1", deployment)).
-		Run(ctx)
+	out, err := c.Args(
+		"rollout", "history", fmt.Sprintf("deployment/%v", deployment)).Run(ctx)
 	if err != nil {
 		return 0, err
 	}
-	revision, err := strconv.Atoi(strings.Trim(out, "\n"))
+	lines := strings.Split(out, "\n")
+	if len(lines) < 3 {
+		return 0, fmt.Errorf("invalid output %q from previous command", out)
+	}
+	revisionStr := strings.Split(lines[len(lines)-3], " ")[0]
+	revision, err := strconv.Atoi(revisionStr)
 	if err != nil {
 		return 0, err
 	}

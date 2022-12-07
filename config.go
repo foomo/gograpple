@@ -22,9 +22,9 @@ type Config struct {
 	Deployment    string `yaml:"deployment" depends:"Namespace"`
 	Container     string `yaml:"container,omitempty" depends:"Deployment"`
 	Repository    string `yaml:"repository,omitempty" depends:"Deployment"`
-	LaunchVscode  bool   `yaml:"launch_vscode,omitempty"`
+	LaunchVscode  bool   `yaml:"launch_vscode"`
 	ListenAddr    string `yaml:"listen_addr,omitempty"`
-	DelveContinue bool   `yaml:"delve_continue,omitempty"`
+	DelveContinue bool   `yaml:"delve_continue"`
 	Image         string `yaml:"image,omitempty"`
 }
 
