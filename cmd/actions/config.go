@@ -2,7 +2,7 @@ package actions
 
 import (
 	"github.com/foomo/gograpple"
-	"github.com/foomo/gograpple/suggest"
+	"github.com/foomo/gograpple/kubectl"
 	"github.com/spf13/cobra"
 )
 
@@ -22,20 +22,19 @@ var (
 			if err := addr.Set(c.ListenAddr); err != nil {
 				return err
 			}
-			if err := suggest.KubeConfig(suggest.DefaultKubeConfig).SetContext(c.Cluster); err != nil {
+			if err := kubectl.SetContext(c.Cluster); err != nil {
 				return err
 			}
 			g, err := gograpple.NewGrapple(newLogger(flagVerbose, flagJSONLog), c.Namespace, c.Deployment)
 			if err != nil {
 				return err
 			}
-
-			if err := g.Patch(c.Repository, c.Image, c.Platform, c.Container, nil); err != nil {
+			if err := g.Patch(c.Repository, c.Image, c.Container, nil); err != nil {
 				return err
 			}
 			defer g.Rollback()
 			// todo support binargs from config
-			return g.Delve("", c.Container, c.SourcePath, c.Platform, nil, addr.Host, addr.Port, c.LaunchVscode, c.DelveContinue)
+			return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, c.LaunchVscode, c.DelveContinue)
 		},
 	}
 )

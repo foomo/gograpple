@@ -147,3 +147,16 @@ func GetPlatformInfo(platform string) (os, arch string, err error) {
 	}
 	return pieces[0], pieces[1], nil
 }
+
+func ParseImage(s string) (repo, name, tag string, err error) {
+	pieces := strings.Split(s, "/")
+	switch true {
+	case len(pieces) == 1 && pieces[0] == s:
+		imageTag := strings.Split(s, ":")
+		return "", imageTag[0], imageTag[1], nil
+	case len(pieces) > 1:
+		imageTag := strings.Split(pieces[len(pieces)-1], ":")
+		return strings.Join(pieces[:len(pieces)-1], "/"), imageTag[0], imageTag[1], nil
+	}
+	return "", "", "", fmt.Errorf("invalid image value %q provided", s)
+}

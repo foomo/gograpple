@@ -14,7 +14,6 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagPod, "pod", "p", "", "pod name (default most recent one)")
 	rootCmd.PersistentFlags().StringVarP(&flagContainer, "container", "c", "", "container name (default deployment name)")
 	patchCmd.Flags().StringVar(&flagImage, "image", "alpine:latest", "image to be used for patching (default alpine:latest)")
-	patchCmd.Flags().StringVar(&flagPlatform, "platform", "linux/amd64", "platform to be used for patching (default linux/amd64)")
 	patchCmd.Flags().StringVarP(&flagRepo, "repo", "r", "", "repository to be used for pushing patched image (default none)")
 	patchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
 	patchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
@@ -22,15 +21,13 @@ func init() {
 	delveCmd.Flags().Var(flagArgs, "args", "go file args")
 	delveCmd.Flags().Var(flagListen, "listen", "delve host:port to listen on")
 	delveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
-	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "start delve server execution without wiating for client connection")
+	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "start delve server execution without waiting for client connection")
 	delveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
-	delveCmd.Flags().StringVar(&flagPlatform, "image", "linux/amd64", "platform to be used for patching (default linux/amd64)")
 	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd, configCmd)
 }
 
 var (
 	flagImage      string
-	flagPlatform   string
 	flagDir        string
 	flagVerbose    bool
 	flagNamespace  string
@@ -82,7 +79,7 @@ var (
 			if err != nil {
 				return err
 			}
-			return grapple.Patch(flagRepo, flagImage, flagPlatform, flagContainer, mounts)
+			return grapple.Patch(flagRepo, flagImage, flagContainer, mounts)
 		},
 	}
 	shellCmd = &cobra.Command{
@@ -98,7 +95,7 @@ var (
 		Short: "start a headless delve debug server for .go input on a patched deployment",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return grapple.Delve(flagPod, flagContainer, flagSourcePath, flagPlatform, flagArgs.items, flagListen.Host, flagListen.Port, flagVscode, flagContinue)
+			return grapple.Delve(flagPod, flagContainer, flagSourcePath, flagArgs.items, flagListen.Host, flagListen.Port, flagVscode, flagContinue)
 		},
 	}
 )

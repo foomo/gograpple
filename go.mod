@@ -3,7 +3,7 @@ module github.com/foomo/gograpple
 go 1.18
 
 require (
-	github.com/bitfield/script v0.20.0
+	github.com/bitfield/script v0.21.4
 	github.com/c-bata/go-prompt v0.2.5
 	github.com/go-delve/delve v1.8.2
 	github.com/life4/genesis v1.0.3
@@ -48,3 +48,5 @@ require (
 	sigs.k8s.io/json v0.0.0-20211020170558-c049b76a60c6 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
+
+replace github.com/c-bata/go-prompt v0.2.5 => github.com/runz0rd/go-prompt v0.2.51
