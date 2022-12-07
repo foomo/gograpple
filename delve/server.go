@@ -57,7 +57,7 @@ func (kds *KubeDelveServer) Start(ctx context.Context, pod, container string,
 // doContinue will start the execution without waiting for a client connection
 func (kds KubeDelveServer) getRunCmd(binDest string, binArgs []string, doContinue bool) []string {
 	cmd := []string{
-		"dlv", "exec", binDest, "--headless", "--api-version=2", "--accept-multiclient",
+		"dlv", "exec", binDest, "--headless", "--accept-multiclient",
 		fmt.Sprintf("--listen=:%v", kds.port),
 	}
 	if doContinue {
