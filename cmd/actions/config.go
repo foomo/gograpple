@@ -29,7 +29,7 @@ var (
 			if err != nil {
 				return err
 			}
-			if err := g.Patch(c.Repository, c.Image, c.Container, nil); err != nil {
+			if err := g.Patch(c.Image, c.Container, nil); err != nil {
 				return err
 			}
 			defer g.Rollback()

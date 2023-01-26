@@ -21,11 +21,10 @@ type Config struct {
 	Namespace     string `yaml:"namespace" depends:"Cluster"`
 	Deployment    string `yaml:"deployment" depends:"Namespace"`
 	Container     string `yaml:"container,omitempty" depends:"Deployment"`
-	Repository    string `yaml:"repository,omitempty" depends:"Deployment"`
-	LaunchVscode  bool   `yaml:"launch_vscode"`
-	ListenAddr    string `yaml:"listen_addr,omitempty"`
-	DelveContinue bool   `yaml:"delve_continue"`
-	Image         string `yaml:"image,omitempty"`
+	LaunchVscode  bool   `yaml:"launch_vscode" default:"false"`
+	ListenAddr    string `yaml:"listen_addr,omitempty" default:":2345"`
+	DelveContinue bool   `yaml:"delve_continue" default:"false"`
+	Image         string `yaml:"image,omitempty" default:"alpine:latest"`
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
@@ -75,12 +74,6 @@ func (c Config) ContainerSuggest(d prompt.Document) []prompt.Suggest {
 	}))
 }
 
-func (c Config) RepositorySuggest(d prompt.Document) []prompt.Suggest {
-	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return kubectl.ListRepositories(c.Namespace, c.Deployment)
-	}))
-}
-
 func (c Config) LaunchVscodeSuggest(d prompt.Document) []prompt.Suggest {
 	return []prompt.Suggest{{Text: "true"}, {Text: "false"}}
 }
@@ -91,20 +84,6 @@ func (c Config) ListenAddrSuggest(d prompt.Document) []prompt.Suggest {
 
 func (c Config) DelveContinueSuggest(d prompt.Document) []prompt.Suggest {
 	return []prompt.Suggest{{Text: "true"}, {Text: "false"}}
-}
-
-func (c Config) DockerfileSuggest(d prompt.Document) []prompt.Suggest {
-	completer := completer.FilePathCompleter{
-		IgnoreCase: true,
-		Filter: func(fi os.FileInfo) bool {
-			return fi.IsDir() || strings.Contains(fi.Name(), "Dockerfile")
-		},
-	}
-	return completer.Complete(d)
-}
-
-func (c Config) PlatformSuggest(d prompt.Document) []prompt.Suggest {
-	return []prompt.Suggest{{Text: "linux/amd64"}, {Text: "linux/arm64"}}
 }
 
 func (c Config) ImageSuggest(d prompt.Document) []prompt.Suggest {

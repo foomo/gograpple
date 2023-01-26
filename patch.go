@@ -42,7 +42,7 @@ func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mo
 	}
 }
 
-func (g Grapple) Patch(repo, image, container string, mounts []Mount) error {
+func (g Grapple) Patch(image, container string, mounts []Mount) error {
 	ctx := context.Background()
 	if g.isPatched() {
 		g.l.Warn("deployment already patched, rolling back first")
