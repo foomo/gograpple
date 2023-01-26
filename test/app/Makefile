@@ -1,8 +1,8 @@
-repo = k3d-local-registry:50442
-namespace = test
+repo=local-registry:56523
 
 build:
-	docker build -t hello:latest .
+	docker build -t $(repo)/hello:latest .
+	-docker push $(repo)/hello:latest
 
 deploy:
-	helm upgrade --install example chart --set image.repository=hello --set image.tag=latest
+	helm upgrade --install example chart --set image.repository=$(repo)/hello --set image.tag=latest

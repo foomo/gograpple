@@ -12,11 +12,17 @@ const (
 	devDeploymentPatchFile           = "deployment-patch.yaml"
 	defaultWaitTimeout               = "30s"
 	conditionContainersReady         = "condition=ContainersReady"
-	defaultPatchedLabel              = "dev-mode-patched"
 	defaultPatchImageSuffix          = "-patch"
 	defaultConfigMapMount            = "/etc/config/mounted"
 	defaultConfigMapDeploymentKey    = "deployment.json"
 	defaultConfigMapDeploymentSuffix = "-patch"
+	defaultTag                       = "latest"
+	defaultImage                     = "alpine:latest"
+	patchImageName                   = "patch-image"
+	defaultPatchChangeCause          = "gograpple patch"
+	changeCauseAnnotation            = "kubernetes.io/change-cause"
+	defaultPatchCreator              = "gograpple"
+	createdByAnnotation              = "app.kubernetes.io/created-by"
 )
 
 type Grapple struct {

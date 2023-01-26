@@ -8,39 +8,39 @@ import (
 
 func init() {
 
-	rootCmd.PersistentFlags().StringVarP(&flagTag, "tag", "t", "latest", "Specifies the image tag")
 	rootCmd.PersistentFlags().StringVarP(&flagDir, "dir", "d", ".", "Specifies working directory")
 	rootCmd.PersistentFlags().StringVarP(&flagNamespace, "namespace", "n", "default", "namespace name")
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Specifies should command output be displayed")
 	rootCmd.PersistentFlags().StringVarP(&flagPod, "pod", "p", "", "pod name (default most recent one)")
 	rootCmd.PersistentFlags().StringVarP(&flagContainer, "container", "c", "", "container name (default deployment name)")
-	patchCmd.Flags().StringVarP(&flagImage, "image", "i", "", "image to be used for patching (default deployment image)")
+	patchCmd.Flags().StringVar(&flagImage, "image", "alpine:latest", "image to be used for patching (default alpine:latest)")
+	patchCmd.Flags().StringVarP(&flagRepo, "repo", "r", "", "repository to be used for pushing patched image (default none)")
 	patchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
 	patchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
 	delveCmd.Flags().StringVar(&flagSourcePath, "source", "", ".go file source path (default cwd)")
 	delveCmd.Flags().Var(flagArgs, "args", "go file args")
 	delveCmd.Flags().Var(flagListen, "listen", "delve host:port to listen on")
 	delveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
+	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "start delve server execution without waiting for client connection")
 	delveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
-	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "start delve server execution without wiating for client connection")
-	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd)
+	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd, configCmd)
 }
 
 var (
-	flagTag        string
+	flagImage      string
 	flagDir        string
 	flagVerbose    bool
 	flagNamespace  string
 	flagPod        string
 	flagContainer  string
-	flagImage      string
+	flagRepo       string
 	flagMounts     []string
 	flagSourcePath string
 	flagArgs       = NewStringList(" ")
 	flagRollback   bool
-	flagContinue   bool
 	flagListen     = NewHostPort("127.0.0.1", 0)
 	flagVscode     bool
+	flagContinue   bool
 	flagJSONLog    bool
 )
 
@@ -51,7 +51,7 @@ var (
 	rootCmd = &cobra.Command{
 		Use: "gograpple",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Name() == commandNameVersion {
+			if cmd.Name() == commandNameVersion || cmd.Name() == commandNameConfig {
 				return nil
 			}
 			l = newLogger(flagVerbose, flagJSONLog)
@@ -79,7 +79,7 @@ var (
 			if err != nil {
 				return err
 			}
-			return grapple.Patch(flagImage, flagTag, flagContainer, mounts)
+			return grapple.Patch(flagRepo, flagImage, flagContainer, mounts)
 		},
 	}
 	shellCmd = &cobra.Command{

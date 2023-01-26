@@ -21,7 +21,8 @@ type Mount struct {
 }
 
 type patchValues struct {
-	Label          string
+	ChangeCause    string
+	CreatedBy      string
 	Deployment     string
 	Container      string
 	ConfigMapMount string
@@ -31,7 +32,8 @@ type patchValues struct {
 
 func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mount) *patchValues {
 	return &patchValues{
-		Label:          defaultPatchedLabel,
+		ChangeCause:    defaultPatchChangeCause,
+		CreatedBy:      defaultPatchCreator,
 		Deployment:     deployment,
 		Container:      container,
 		ConfigMapMount: defaultConfigMapMount,
@@ -40,22 +42,19 @@ func (g Grapple) newPatchValues(deployment, container, image string, mounts []Mo
 	}
 }
 
-func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
+func (g Grapple) Patch(repo, image, container string, mounts []Mount) error {
 	ctx := context.Background()
 	if g.isPatched() {
 		g.l.Warn("deployment already patched, rolling back first")
-		if err := g.rollbackUntilUnpatched(ctx); err != nil {
+		if err := g.rollback(ctx); err != nil {
 			return err
 		}
 	}
 	if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
 		return err
 	}
-	if err := ValidateImage(g.deployment, container, &image, &tag); err != nil {
-		return err
-	}
 
-	g.l.Infof("creating a ConfigMap with deployment data")
+	g.l.Infof("creating a configmap with deployment data")
 	bs, err := json.Marshal(g.deployment)
 	if err != nil {
 		return err
@@ -82,7 +81,7 @@ func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
 		perm           = 0700
 	)
 
-	dockerFile, err := bindata.ReadFile(filepath.Join(patchFolder, dockerfileName))
+	patchDockerfile, err := bindata.ReadFile(filepath.Join(patchFolder, dockerfileName))
 	if err != nil {
 		return err
 	}
@@ -93,7 +92,7 @@ func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
 
 	theHookPath := path.Join(os.TempDir(), patchFolder)
 	_ = os.Mkdir(theHookPath, perm)
-	err = os.WriteFile(filepath.Join(theHookPath, dockerfileName), dockerFile, perm)
+	err = os.WriteFile(filepath.Join(theHookPath, dockerfileName), patchDockerfile, perm)
 	if err != nil {
 		return err
 	}
@@ -119,9 +118,9 @@ func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
 	}
 
 	pathedImageName := g.patchedImageName(imageRepo)
-	g.l.Infof("building patch image %v:%v", pathedImageName, tag)
+	g.l.Infof("building patch image %v:%v", pathedImageName, defaultTag)
 	_, err = g.dockerCmd.Build(theHookPath, "--build-arg",
-		fmt.Sprintf("IMAGE=%v:%v", image, tag), "-t", fmt.Sprintf("%v:%v", pathedImageName, tag),
+		fmt.Sprintf("IMAGE=%v", image), "-t", fmt.Sprintf("%v:%v", pathedImageName, defaultTag),
 		"--platform", deploymentPlatform.String()).Quiet().Run(ctx)
 	if err != nil {
 		return err
@@ -129,8 +128,8 @@ func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
 
 	if imageRepo != "" {
 		//contains a repo, push the built image
-		g.l.Infof("pushing patch image %v:%v", pathedImageName, tag)
-		_, err = g.dockerCmd.Push(pathedImageName, tag).Run(ctx)
+		g.l.Infof("pushing patch image %v:%v", pathedImageName, defaultTag)
+		_, err = g.dockerCmd.Push(pathedImageName, defaultTag).Run(ctx)
 		if err != nil {
 			return err
 		}
@@ -139,56 +138,63 @@ func (g Grapple) Patch(image, tag, container string, mounts []Mount) error {
 	g.l.Infof("rendering deployment patch template")
 	patch, err := renderTemplate(
 		path.Join(theHookPath, devDeploymentPatchFile),
-		g.newPatchValues(g.deployment.Name, container, fmt.Sprintf("%v:%v", pathedImageName, tag), mounts),
+		g.newPatchValues(g.deployment.Name, container, fmt.Sprintf("%v:%v", pathedImageName, defaultTag), mounts),
 	)
 	if err != nil {
 		return err
 	}
 
-	g.l.Infof("patching deployment for development %s with patch", g.deployment.Name)
+	g.l.Infof("patching deployment %s for development with patch", g.deployment.Name)
 	_, err = g.kubeCmd.PatchDeployment(patch, g.deployment.Name).Run(ctx)
-	return err
-}
-
-func (g *Grapple) Rollback() error {
-	if !g.isPatched() {
-		return fmt.Errorf("deployment not patched, stopping rollback")
-	}
-	return g.rollbackUntilUnpatched(context.Background())
-}
-
-func (g Grapple) isPatched() bool {
-	_, ok := g.deployment.Spec.Template.ObjectMeta.Labels[defaultPatchedLabel]
-	return ok
-}
-
-func (g *Grapple) rollbackUntilUnpatched(ctx context.Context) error {
-	if !g.isPatched() {
-		return nil
-	}
-	if err := g.rollback(ctx); err != nil {
-		return err
-	}
-	if err := g.updateDeployment(); err != nil {
-		return err
-	}
-	return g.rollbackUntilUnpatched(ctx)
-}
-
-func (g Grapple) rollback(ctx context.Context) error {
-	g.l.Infof("removing ConfigMap %v", g.DeploymentConfigMapName())
-	_, err := g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName()).Run(ctx)
-	if err != nil {
-		// may not exist
-		g.l.Warn(err)
-	}
-
-	g.l.Infof("rolling back deployment %v", g.deployment.Name)
-	_, err = g.kubeCmd.RollbackDeployment(g.deployment.Name).Run(ctx)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (g *Grapple) Rollback() error {
+	g.l.Info("rolling back")
+	if !g.isPatched() {
+		return fmt.Errorf("deployment not patched, stopping rollback")
+	}
+	return g.rollback(context.Background())
+}
+
+func (g Grapple) isPatched() bool {
+	d, err := g.kubeCmd.GetDeployment(context.Background(), g.deployment.Name)
+	if err != nil {
+		return false
+	}
+	createdBy, ok := d.Spec.Template.ObjectMeta.Annotations[createdByAnnotation]
+	return ok && createdBy == defaultPatchCreator
+}
+
+func (g Grapple) rollback(ctx context.Context) error {
+	revision, err := g.kubeCmd.GetLatestRevision(ctx, g.deployment.Name)
+	if err != nil {
+		return err
+	}
+	for i := revision - 1; i >= 0; i-- {
+		g.l.Infof("removing configmap %v", g.DeploymentConfigMapName())
+		_, err := g.kubeCmd.DeleteConfigMap(g.DeploymentConfigMapName()).Run(ctx)
+		if err != nil {
+			// may not exist
+			g.l.Warn("invalid patch state! label present but no configmap found")
+		}
+		g.l.Infof("rolling back deployment %v to revision %v", g.deployment.Name, i)
+		if _, err = g.kubeCmd.RolloutUndo(g.deployment.Name, i).Run(ctx); err != nil {
+			return err
+		}
+		if !g.isPatched() {
+			// annotate rollback
+			if _, err = g.kubeCmd.UpdateChangeCause(g.deployment.Name, fmt.Sprintf("rollback to %v", i)).Run(ctx); err != nil {
+				return err
+			}
+			// if the deployment is unpatched, exit
+			return nil
+		}
+	}
+	return fmt.Errorf("couldnt rollback deployment %v into unpatched state", g.deployment.Name)
 }
 
 func (g Grapple) DeploymentConfigMapName() string {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	goexec "os/exec"
+	"path/filepath"
 
 	"github.com/sirupsen/logrus"
 )
@@ -52,6 +53,10 @@ func (c *Cmd) Args(args ...string) *Cmd {
 }
 
 func (c *Cmd) Cwd(path string) *Cmd {
+	fi, _ := os.Stat(path)
+	if !fi.IsDir() {
+		path = filepath.Dir(path)
+	}
 	c.cwd = path
 	return c
 }
