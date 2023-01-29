@@ -1,9 +1,0 @@
-source_path: /Users/mpejanovic/Documents/dev/gograpple/test/app/main.go
-cluster: k3d-local
-namespace: default
-deployment: example
-container: example
-launch_vscode: true
-listen_addr: :2345
-delve_continue: false
-image: alpine:latest

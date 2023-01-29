@@ -159,6 +159,7 @@ func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourc
 func (g Grapple) portForwardDelve(l *logrus.Entry, ctx context.Context, pod, host string, port int) {
 	l.Info("port-forwarding pod for delve server")
 	cmd := g.kubeCmd.PortForwardPod(pod, host, port)
+	cmd.Stdout(os.Stdout)
 	go func() {
 		_, err := cmd.Run(ctx)
 		if err != nil && err.Error() != "signal: killed" {

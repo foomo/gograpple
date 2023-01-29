@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/c-bata/go-prompt"
@@ -21,10 +22,19 @@ type Config struct {
 	Namespace     string `yaml:"namespace" depends:"Cluster"`
 	Deployment    string `yaml:"deployment" depends:"Namespace"`
 	Container     string `yaml:"container,omitempty" depends:"Deployment"`
+	Attach        string `yaml:"attach,omitempty" depends:"Container"`
 	LaunchVscode  bool   `yaml:"launch_vscode" default:"false"`
 	ListenAddr    string `yaml:"listen_addr,omitempty" default:":2345"`
 	DelveContinue bool   `yaml:"delve_continue" default:"false"`
 	Image         string `yaml:"image,omitempty" default:"alpine:latest"`
+}
+
+func (c Config) Port() (int, error) {
+	pieces := strings.Split(c.ListenAddr, ":")
+	if len(pieces) != 2 {
+		return 0, fmt.Errorf("unable to parse port from %q", c.ListenAddr)
+	}
+	return strconv.Atoi(pieces[1])
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
@@ -69,6 +79,12 @@ func (c Config) DeploymentSuggest(d prompt.Document) []prompt.Suggest {
 }
 
 func (c Config) ContainerSuggest(d prompt.Document) []prompt.Suggest {
+	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
+		return kubectl.ListContainers(c.Namespace, c.Deployment)
+	}))
+}
+
+func (c Config) AttachSuggest(d prompt.Document) []prompt.Suggest {
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
 		return kubectl.ListContainers(c.Namespace, c.Deployment)
 	}))

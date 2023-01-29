@@ -1,6 +1,7 @@
 package kubectl
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/foomo/gograpple/suggest"
 	"github.com/life4/genesis/slices"
 	"github.com/pkg/errors"
+	apps "k8s.io/api/apps/v1"
 )
 
 func Exists() bool {
@@ -124,6 +126,44 @@ func FilterImages(namespace, deployment string, filter func(s string) string) ([
 	return results, err
 }
 
+func ExecPod(pod, container string, cmd []string) *script.Pipe {
+	return script.Exec(fmt.Sprintf(
+		"kubectl exec %v -c %v -- %v", pod, container, strings.Join(cmd, " ")))
+}
+
+func GetDeployment(namespace, deployment string) (*apps.Deployment, error) {
+	out, err := script.Exec(fmt.Sprintf(
+		"kubectl -n %v get deployment %v -o json", namespace, deployment)).String()
+	if err != nil {
+		return nil, err
+	}
+	var d apps.Deployment
+	if err := json.Unmarshal([]byte(out), &d); err != nil {
+		return nil, err
+	}
+	return &d, nil
+}
+
+func GetMostRecentRunningPodBySelectors(selectors map[string]string) (string, error) {
+	var selector []string
+	for k, v := range selectors {
+		selector = append(selector, fmt.Sprintf("%v=%v", k, v))
+	}
+	pods, err := script.Exec(
+		fmt.Sprintf(`kubectl --selector %v get pods --field-selector=status.phase=Running 
+		--sort-by=.status.startTime -o name`, strings.Join(selector, ","))).
+		FilterLine(func(s string) string {
+			return strings.TrimLeft(s, "pod/")
+		}).Slice()
+	if err != nil {
+		return "", err
+	}
+	if len(pods) > 0 {
+		return pods[len(pods)-1], nil
+	}
+	return "", fmt.Errorf("no pods found")
+}
+
 func TempSwitchContext(context string, cb func() error) error {
 	currentCtx, err := GetCurrentContext()
 	if err != nil {
@@ -134,4 +174,41 @@ func TempSwitchContext(context string, cb func() error) error {
 		return err
 	}
 	return cb()
+}
+
+func PortForwardPod(pod string, port int) error {
+	cmd := fmt.Sprintf("kubectl port-forward pods/%v %v:%v", pod, port, port)
+	_, err := script.Exec(cmd).Stdout()
+	// if err != nil {
+	// 	return errors.WithMessage(err, out)
+	// }
+	return err
+}
+
+func GetPIDsOf(pod, container, process string) (pids []string, err error) {
+	return ExecPod(pod, container, []string{"pidof", process}).Replace(" ", "\n").Slice()
+}
+
+func KillPidsOnPod(pod, container string, pids []string, murder bool) []error {
+	var errs []error
+	for _, pid := range pids {
+		cmd := []string{"kill"}
+		if murder {
+			cmd = append(cmd, "-s", "9")
+		}
+		cmd = append(cmd, pid)
+		_, err := ExecPod(pod, container, cmd).Stdout()
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errs
+}
+
+func CopyToPod(pod, container, source, destination string) error {
+	out, err := script.Exec(fmt.Sprintf("kubectl cp %v %v:%v -c %v", source, pod, destination, container)).String()
+	if err != nil {
+		return errors.WithMessage(err, out)
+	}
+	return nil
 }

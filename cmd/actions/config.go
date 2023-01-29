@@ -18,23 +18,30 @@ var (
 			if err != nil {
 				return err
 			}
-			addr := HostPort{}
-			if err := addr.Set(c.ListenAddr); err != nil {
-				return err
-			}
-			if err := kubectl.SetContext(c.Cluster); err != nil {
-				return err
-			}
 			g, err := gograpple.NewGrapple(newLogger(flagVerbose, flagJSONLog), c.Namespace, c.Deployment)
 			if err != nil {
 				return err
 			}
-			if err := g.Patch(c.Image, c.Container, nil); err != nil {
+			if c.Attach == "" {
+				addr := HostPort{}
+				if err := addr.Set(c.ListenAddr); err != nil {
+					return err
+				}
+				if err := kubectl.SetContext(c.Cluster); err != nil {
+					return err
+				}
+				if err := g.Patch(c.Image, c.Container, nil); err != nil {
+					return err
+				}
+				defer g.Rollback()
+				// todo support binargs from config
+				return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, c.LaunchVscode, c.DelveContinue)
+			}
+			port, err := c.Port()
+			if err != nil {
 				return err
 			}
-			defer g.Rollback()
-			// todo support binargs from config
-			return g.Delve("", c.Container, c.SourcePath, nil, addr.Host, addr.Port, c.LaunchVscode, c.DelveContinue)
+			return g.Attach(c.Namespace, c.Deployment, c.Container, c.Attach, port)
 		},
 	}
 )
