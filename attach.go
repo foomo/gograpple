@@ -1,43 +1,27 @@
 package gograpple
 
 import (
-	"context"
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/bitfield/script"
 	"github.com/foomo/gograpple/kubectl"
+	"github.com/foomo/gograpple/log"
 	"github.com/pkg/errors"
 )
 
-func (g Grapple) Attach(namespace, deployment, container, bin string, port int) error {
+func (g Grapple) Attach(namespace, deployment, container, bin, host string, port int) error {
 	pod, err := kubectl.GetMostRecentRunningPodBySelectors(g.deployment.Spec.Selector.MatchLabels)
 	if err != nil {
 		return err
 	}
-	g.cleanup(pod, container)
+	cleanup(pod, container)
 	// check if delve is available
 	dlvDest := "/dlv"
 	_, err = kubectl.ExecPod(pod, container, []string{"which", "dlv"}).String()
 	if err != nil {
-		// // if not install it
-		// out, err := kubectl.ExecPod(pod, container, []string{"go", "get", "-u", "github.com/go-delve/delve/cmd/dlv"}).String()
-		// if err != nil {
-		// 	return errors.WithMessage(err, out)
-		// }
-		// build dlv for given arch
-		// os.Setenv("GOBIN", "/tmp/")
-		os.Setenv("CGO_ENABLED", "0")
-		os.Setenv("GOOS", "linux")
-		os.Setenv("GOARCH", "amd64")
-		if out, err := script.Exec(
-			`go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@latest`).String(); err != nil {
-			return errors.WithMessage(err, out)
-		}
-
-		dlvSrc := fmt.Sprintf("%v/go/bin/linux_amd64/dlv", os.Getenv("HOME"))
-		// copy dlv to pod
-		if err := kubectl.CopyToPod(pod, container, dlvSrc, dlvDest); err != nil {
+		if err := copyDelve(pod, container, dlvDest); err != nil {
 			return err
 		}
 	}
@@ -50,39 +34,59 @@ func (g Grapple) Attach(namespace, deployment, container, bin string, port int) 
 	if len(pids) != 1 {
 		return fmt.Errorf("found none or more than one process named %q", bin)
 	}
-	g.portForwardDelve(g.l, context.Background(), pod, "", port)
-	attachDelveOnPod_(pod, container, dlvDest, pids[0], port)
+	go attachDelveOnPod(pod, container, dlvDest, pids[0], host, port, g.debug)
 	// defer g.cleanup(pod, container)
 	// launchVSCode(context.Background(), g.l, "./test/app", "", port, 3)
-	// port forward to server
-	// return kubectl.PortForwardPod(pod, port)
-	return nil
+	return kubectl.PortForwardPod(pod, port)
 }
 
-func (g Grapple) attachDelveOnPod(pod, container, dlvPath, binPid string, port int) {
-	g.l.Info("attaching delve server")
-	cmd := g.kubeCmd.ExecPod(pod, container, []string{dlvPath, "attach", binPid,
-		"--headless", "--continue", "--api-version=2", "--accept-multiclient", "--log",
-		fmt.Sprintf("--listen=:%v", port)})
-	cmd.Stdout(os.Stdout)
-	go func() {
-		_, err := cmd.Run(context.Background())
-		if err != nil && err.Error() != "signal: killed" {
-			g.l.WithError(err).Errorf("dlv attach for %v pod failed", pod)
-		}
-	}()
-	<-cmd.Started()
+func attachCmd(dlvPath, binPid, host string, port int, debug bool) []string {
+	cmd := []string{dlvPath, "--headless", "attach", binPid,
+		"--continue", "--api-version=2", "--accept-multiclient",
+		fmt.Sprintf("--listen=%v:%v", host, port)}
+	if debug {
+		cmd = append(cmd, "--log", "--log-output=rpc,dap,debugger")
+	}
+	return cmd
 }
-func attachDelveOnPod_(pod, container, dlvPath, binPid string, port int) error {
-	_, err := kubectl.ExecPod(pod, container, []string{dlvPath, "--headless", "attach", binPid,
-		"--continue", "--api-version=2", "--accept-multiclient", "--log", fmt.Sprintf("--listen=:%v", port)}).Stdout()
+
+func dapCmd(dlvPath string, port int, debug bool) []string {
+	cmd := []string{dlvPath, "dap", "--listen",
+		fmt.Sprintf("127.0.0.1:%v", port)}
+	if debug {
+		cmd = append(cmd, "--log", "--log-output=rpc,dap,debugger")
+	}
+	return cmd
+}
+
+func attachDelveOnPod(pod, container, dlvPath, binPid, host string, port int, debug bool) error {
+	_, err := kubectl.ExecPod(pod, container, attachCmd(dlvPath, binPid, host, port, debug)).WithStdout(log.Writer("dlv")).Stdout()
 	return err
 }
 
-func (g Grapple) cleanup(pod, container string) {
-	pss := []string{"dlv", "kubectl"}
+func cleanup(pod, container string) {
+	pss := []string{"dlv"}
 	for _, ps := range pss {
-		kubectl.ExecPod(pod, container, []string{"pkill", ps}).Stdout()
-		script.Exec(fmt.Sprintf("pkill %v", ps)).Stdout()
+		kubectl.ExecPod(pod, container, []string{"pkill", ps}).WithStdout(log.Writer("cleanup")).Stdout()
+		// script.Exec(fmt.Sprintf("pkill %v", ps)).Stdout()
 	}
+}
+
+func copyDelve(pod, container, dlvDest string) error {
+	// build dlv for given arch
+	dlvSrc := fmt.Sprintf("%v/go/bin/linux_amd64/dlv", os.Getenv("HOME"))
+	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+		// if its the same os and arch use a different location
+		os.Setenv("GOBIN", "/tmp/")
+		dlvSrc = "/tmp/dlv"
+	}
+	os.Setenv("CGO_ENABLED", "0")
+	os.Setenv("GOOS", "linux")
+	os.Setenv("GOARCH", "amd64")
+	if out, err := script.Exec(
+		`go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@latest`).String(); err != nil {
+		return errors.WithMessage(err, out)
+	}
+	// copy dlv to pod
+	return kubectl.CopyToPod(pod, container, dlvSrc, dlvDest)
 }

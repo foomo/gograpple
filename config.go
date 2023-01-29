@@ -19,22 +19,29 @@ import (
 type Config struct {
 	SourcePath    string `yaml:"source_path"`
 	Cluster       string `yaml:"cluster"`
-	Namespace     string `yaml:"namespace" depends:"Cluster"`
+	Namespace     string `yaml:"namespace" depends:"Cluster" default:"default"`
 	Deployment    string `yaml:"deployment" depends:"Namespace"`
-	Container     string `yaml:"container,omitempty" depends:"Deployment"`
-	Attach        string `yaml:"attach,omitempty" depends:"Container"`
+	Container     string `yaml:"container" depends:"Deployment"`
+	AttachTo      string `yaml:"attach_to,omitempty" depends:"Container"`
 	LaunchVscode  bool   `yaml:"launch_vscode" default:"false"`
 	ListenAddr    string `yaml:"listen_addr,omitempty" default:":2345"`
 	DelveContinue bool   `yaml:"delve_continue" default:"false"`
 	Image         string `yaml:"image,omitempty" default:"alpine:latest"`
 }
 
-func (c Config) Port() (int, error) {
+func (c Config) Addr() (host string, port int, err error) {
 	pieces := strings.Split(c.ListenAddr, ":")
 	if len(pieces) != 2 {
-		return 0, fmt.Errorf("unable to parse port from %q", c.ListenAddr)
+		return host, port, fmt.Errorf("unable to parse addr from %q", c.ListenAddr)
 	}
-	return strconv.Atoi(pieces[1])
+	host = pieces[0]
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port, err = strconv.Atoi(pieces[1]); err != nil {
+		return host, port, err
+	}
+	return host, port, err
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
@@ -84,9 +91,21 @@ func (c Config) ContainerSuggest(d prompt.Document) []prompt.Suggest {
 	}))
 }
 
-func (c Config) AttachSuggest(d prompt.Document) []prompt.Suggest {
+func (c Config) AttachToSuggest(d prompt.Document) []prompt.Suggest {
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return kubectl.ListContainers(c.Namespace, c.Deployment)
+		d, err := kubectl.GetDeployment(c.Namespace, c.Deployment)
+		if err != nil {
+			return nil, err
+		}
+		pod, err := kubectl.GetMostRecentRunningPodBySelectors(d.Spec.Selector.MatchLabels)
+		if err != nil {
+			return nil, err
+		}
+		ps, err := kubectl.ExecPod(pod, c.Container, []string{"ps", "-o", "comm"}).Replace("COMMAND", "").String()
+		if err != nil {
+			return nil, err
+		}
+		return strings.Split(strings.Trim(ps, "\n"), "\n"), nil
 	}))
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/bitfield/script"
+	"github.com/foomo/gograpple/log"
 	"github.com/foomo/gograpple/suggest"
 	"github.com/life4/genesis/slices"
 	"github.com/pkg/errors"
@@ -178,7 +179,7 @@ func TempSwitchContext(context string, cb func() error) error {
 
 func PortForwardPod(pod string, port int) error {
 	cmd := fmt.Sprintf("kubectl port-forward pods/%v %v:%v", pod, port, port)
-	_, err := script.Exec(cmd).Stdout()
+	_, err := script.Exec(cmd).WithStdout(log.Writer("kubectl")).Stdout()
 	// if err != nil {
 	// 	return errors.WithMessage(err, out)
 	// }
