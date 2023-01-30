@@ -127,9 +127,9 @@ func FilterImages(namespace, deployment string, filter func(s string) string) ([
 	return results, err
 }
 
-func ExecPod(pod, container string, cmd []string) *script.Pipe {
+func ExecPod(namespace, pod, container string, cmd []string) *script.Pipe {
 	return script.Exec(fmt.Sprintf(
-		"kubectl exec %v -c %v -- %v", pod, container, strings.Join(cmd, " ")))
+		"kubectl -n %v exec %v -c %v -- %v", namespace, pod, container, strings.Join(cmd, " ")))
 }
 
 func GetDeployment(namespace, deployment string) (*apps.Deployment, error) {
@@ -145,17 +145,17 @@ func GetDeployment(namespace, deployment string) (*apps.Deployment, error) {
 	return &d, nil
 }
 
-func GetMostRecentRunningPodBySelectors(selectors map[string]string) (string, error) {
+func GetMostRecentRunningPodBySelectors(namespace string, selectors map[string]string) (string, error) {
 	var selector []string
 	for k, v := range selectors {
 		selector = append(selector, fmt.Sprintf("%v=%v", k, v))
 	}
-	pods, err := script.Exec(
-		fmt.Sprintf(`kubectl --selector %v get pods --field-selector=status.phase=Running 
-		--sort-by=.status.startTime -o name`, strings.Join(selector, ","))).
-		FilterLine(func(s string) string {
-			return strings.TrimLeft(s, "pod/")
-		}).Slice()
+	cmd := fmt.Sprintf(
+		"kubectl -n %v --selector %v get pods --field-selector=status.phase=Running --sort-by=.status.startTime -o name",
+		namespace, strings.Join(selector, ","))
+	pods, err := script.Exec(cmd).FilterLine(func(s string) string {
+		return strings.TrimLeft(s, "pod/")
+	}).Slice()
 	if err != nil {
 		return "", err
 	}
@@ -177,8 +177,8 @@ func TempSwitchContext(context string, cb func() error) error {
 	return cb()
 }
 
-func PortForwardPod(pod string, port int) error {
-	cmd := fmt.Sprintf("kubectl port-forward pods/%v %v:%v", pod, port, port)
+func PortForwardPod(namespace, pod string, port int) error {
+	cmd := fmt.Sprintf("kubectl -n %v port-forward pods/%v %v:%v", namespace, pod, port, port)
 	_, err := script.Exec(cmd).WithStdout(log.Writer("kubectl")).Stdout()
 	// if err != nil {
 	// 	return errors.WithMessage(err, out)
@@ -186,11 +186,11 @@ func PortForwardPod(pod string, port int) error {
 	return err
 }
 
-func GetPIDsOf(pod, container, process string) (pids []string, err error) {
-	return ExecPod(pod, container, []string{"pidof", process}).Replace(" ", "\n").Slice()
+func GetPIDsOf(namespace, pod, container, process string) (pids []string, err error) {
+	return ExecPod(namespace, pod, container, []string{"pidof", process}).Replace(" ", "\n").Slice()
 }
 
-func KillPidsOnPod(pod, container string, pids []string, murder bool) []error {
+func KillPidsOnPod(namespace, pod, container string, pids []string, murder bool) []error {
 	var errs []error
 	for _, pid := range pids {
 		cmd := []string{"kill"}
@@ -198,7 +198,7 @@ func KillPidsOnPod(pod, container string, pids []string, murder bool) []error {
 			cmd = append(cmd, "-s", "9")
 		}
 		cmd = append(cmd, pid)
-		_, err := ExecPod(pod, container, cmd).Stdout()
+		_, err := ExecPod(namespace, pod, container, cmd).Stdout()
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -206,8 +206,8 @@ func KillPidsOnPod(pod, container string, pids []string, murder bool) []error {
 	return errs
 }
 
-func CopyToPod(pod, container, source, destination string) error {
-	out, err := script.Exec(fmt.Sprintf("kubectl cp %v %v:%v -c %v", source, pod, destination, container)).String()
+func CopyToPod(namespace, pod, container, source, destination string) error {
+	out, err := script.Exec(fmt.Sprintf("kubectl -n %v cp %v %v:%v -c %v", namespace, source, pod, destination, container)).String()
 	if err != nil {
 		return errors.WithMessage(err, out)
 	}
