@@ -7,5 +7,9 @@ import (
 )
 
 func Writer(src string) io.Writer {
-	return logrus.New().WithField("src", src).Writer()
+	return Entry(src).Writer()
+}
+
+func Entry(src string) *logrus.Entry {
+	return logrus.StandardLogger().WithField("src", src)
 }

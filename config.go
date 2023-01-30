@@ -132,7 +132,7 @@ func LoadConfig(path string) (Config, error) {
 	var c Config
 	if _, err := os.Stat(path); err != nil {
 		// needed due to panicking in ctrl+c binding (library limitation)
-		defer handleExit()
+		defer handlePromptExit()
 		// if the config path doesnt exist
 		// run configuration create with suggestions
 		gencon.New(
@@ -166,7 +166,7 @@ func promptExit(_ *prompt.Buffer) {
 	panic(Exit(0))
 }
 
-func handleExit() {
+func handlePromptExit() {
 	v := recover()
 	switch v.(type) {
 	case nil:

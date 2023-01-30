@@ -3,6 +3,7 @@ package gograpple
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"runtime"
 
 	"github.com/bitfield/script"
@@ -16,7 +17,7 @@ func (g Grapple) Attach(namespace, deployment, container, bin, host string, port
 	if err != nil {
 		return err
 	}
-	cleanup(namespace, pod, container)
+	go handleExit(namespace, pod, container)
 	// check if delve is available
 	dlvDest := "dlv"
 	_, err = kubectl.ExecPod(namespace, pod, container, []string{"which", "dlv"}).String()
@@ -35,7 +36,6 @@ func (g Grapple) Attach(namespace, deployment, container, bin, host string, port
 		return fmt.Errorf("found none or more than one process named %q", bin)
 	}
 	go attachDelveOnPod(namespace, pod, container, dlvDest, pids[0], host, port, g.debug)
-	// defer g.cleanup(pod, container)
 	// launchVSCode(context.Background(), g.l, "./test/app", "", port, 3)
 	return kubectl.PortForwardPod(namespace, pod, port)
 }
@@ -89,4 +89,13 @@ func copyDelve(namespace, pod, container, dlvDest string) error {
 	}
 	// copy dlv to pod
 	return kubectl.CopyToPod(namespace, pod, container, dlvSrc, dlvDest)
+}
+
+func handleExit(namespace, pod, container string) {
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt)
+	<-signalChan
+	log.Entry("cleanup").Info("exiting")
+	cleanup(namespace, pod, container)
+	os.Exit(0)
 }
