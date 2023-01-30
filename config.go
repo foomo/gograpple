@@ -19,7 +19,7 @@ import (
 type Config struct {
 	SourcePath    string `yaml:"source_path"`
 	Cluster       string `yaml:"cluster"`
-	Namespace     string `yaml:"namespace" depends:"Cluster" default:"default"`
+	Namespace     string `yaml:"namespace" depends:"Cluster"`
 	Deployment    string `yaml:"deployment" depends:"Namespace"`
 	Container     string `yaml:"container" depends:"Deployment"`
 	AttachTo      string `yaml:"attach_to,omitempty" depends:"Container"`
@@ -97,11 +97,11 @@ func (c Config) AttachToSuggest(d prompt.Document) []prompt.Suggest {
 		if err != nil {
 			return nil, err
 		}
-		pod, err := kubectl.GetMostRecentRunningPodBySelectors(d.Spec.Selector.MatchLabels)
+		pod, err := kubectl.GetMostRecentRunningPodBySelectors(c.Namespace, d.Spec.Selector.MatchLabels)
 		if err != nil {
 			return nil, err
 		}
-		ps, err := kubectl.ExecPod(pod, c.Container, []string{"ps", "-o", "comm"}).Replace("COMMAND", "").String()
+		ps, err := kubectl.ExecPod(c.Namespace, pod, c.Container, []string{"ps", "-o", "comm"}).Replace("COMMAND", "").String()
 		if err != nil {
 			return nil, err
 		}
