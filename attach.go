@@ -41,9 +41,8 @@ func (g Grapple) Attach(namespace, deployment, container, bin, arch, host string
 }
 
 func attachCmd(dlvPath, binPid, host string, port int, debug bool) []string {
-	cmd := []string{dlvPath, "--headless", "attach", binPid,
-		"--continue", "--api-version=2", "--accept-multiclient",
-		fmt.Sprintf("--listen=%v:%v", host, port)}
+	cmd := []string{dlvPath, "--headless", "attach", binPid, "--api-version=2",
+		"--continue", "--accept-multiclient", fmt.Sprintf("--listen=%v:%v", host, port)}
 	if debug {
 		cmd = append(cmd, "--log", "--log-output=rpc,dap,debugger")
 	}
