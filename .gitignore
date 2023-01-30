@@ -17,5 +17,6 @@
 .todo
 .idea/
 .vscode/
+!test/app/.vscode/
 
 bin/
