@@ -24,9 +24,10 @@ type Config struct {
 	Container     string `yaml:"container" depends:"Deployment"`
 	AttachTo      string `yaml:"attach_to,omitempty" depends:"Container"`
 	LaunchVscode  bool   `yaml:"launch_vscode" default:"false"`
-	ListenAddr    string `yaml:"listen_addr,omitempty" default:":2345"`
-	DelveContinue bool   `yaml:"delve_continue" default:"false"`
+	ListenAddr    string `yaml:"listen_addr,omitempty" default:"127.0.0.1:2345"`
+	DelveContinue bool   `yaml:"delve_continue,omitempty" default:"false"`
 	Image         string `yaml:"image,omitempty" default:"alpine:latest"`
+	Arch          string `yaml:"arch,omitempty" default:"amd64"`
 }
 
 func (c Config) Addr() (host string, port int, err error) {
@@ -126,6 +127,10 @@ func (c Config) ImageSuggest(d prompt.Document) []prompt.Suggest {
 		return kubectl.ListImages(c.Namespace, c.Deployment)
 	}))
 	return append(suggestions, prompt.Suggest{Text: defaultImage})
+}
+
+func (c Config) ArchSuggest(d prompt.Document) []prompt.Suggest {
+	return []prompt.Suggest{{Text: "amd64"}, {Text: "arm64"}}
 }
 
 func LoadConfig(path string) (Config, error) {

@@ -37,7 +37,7 @@ var (
 				// todo support binargs from config
 				return g.Delve("", c.Container, c.SourcePath, nil, host, port, c.LaunchVscode, c.DelveContinue)
 			}
-			return g.Attach(c.Namespace, c.Deployment, c.Container, c.AttachTo, host, port)
+			return g.Attach(c.Namespace, c.Deployment, c.Container, c.AttachTo, c.Arch, host, port)
 		},
 	}
 )

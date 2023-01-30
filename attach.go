@@ -12,7 +12,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func (g Grapple) Attach(namespace, deployment, container, bin, host string, port int) error {
+func (g Grapple) Attach(namespace, deployment, container, bin, arch, host string, port int) error {
 	pod, err := kubectl.GetMostRecentRunningPodBySelectors(namespace, g.deployment.Spec.Selector.MatchLabels)
 	if err != nil {
 		return err
@@ -22,7 +22,7 @@ func (g Grapple) Attach(namespace, deployment, container, bin, host string, port
 	dlvDest := "dlv"
 	_, err = kubectl.ExecPod(namespace, pod, container, []string{"which", "dlv"}).String()
 	if err != nil {
-		if err := copyDelve(namespace, pod, container, dlvDest); err != nil {
+		if err := copyDelve(namespace, pod, container, arch, dlvDest); err != nil {
 			return err
 		}
 		dlvDest = "/dlv"
@@ -72,17 +72,17 @@ func cleanup(namespace, pod, container string) {
 	}
 }
 
-func copyDelve(namespace, pod, container, dlvDest string) error {
+func copyDelve(namespace, pod, container, arch, dlvDest string) error {
 	// build dlv for given arch
-	dlvSrc := fmt.Sprintf("%v/go/bin/linux_%v/dlv", os.Getenv("HOME"), runtime.GOARCH)
-	if runtime.GOOS == "linux" && runtime.GOARCH == "amd64" {
+	dlvSrc := fmt.Sprintf("%v/go/bin/linux_%v/dlv", os.Getenv("HOME"), arch)
+	if runtime.GOOS == "linux" && arch == runtime.GOARCH {
 		// if its the same os and arch use a different location
 		os.Setenv("GOBIN", "/tmp/")
 		dlvSrc = "/tmp/dlv"
 	}
 	os.Setenv("CGO_ENABLED", "0")
 	os.Setenv("GOOS", "linux")
-	os.Setenv("GOARCH", runtime.GOARCH)
+	os.Setenv("GOARCH", arch)
 	if out, err := script.Exec(
 		`go install -ldflags "-s -w -extldflags '-static'" github.com/go-delve/delve/cmd/dlv@latest`).String(); err != nil {
 		return errors.WithMessage(err, out)
