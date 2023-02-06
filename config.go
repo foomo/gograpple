@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/c-bata/go-prompt"
@@ -20,11 +21,28 @@ type Config struct {
 	Cluster       string `yaml:"cluster"`
 	Namespace     string `yaml:"namespace" depends:"Cluster"`
 	Deployment    string `yaml:"deployment" depends:"Namespace"`
-	Container     string `yaml:"container,omitempty" depends:"Deployment"`
+	Container     string `yaml:"container" depends:"Deployment"`
+	AttachTo      string `yaml:"attach_to,omitempty" depends:"Container"`
 	LaunchVscode  bool   `yaml:"launch_vscode" default:"false"`
-	ListenAddr    string `yaml:"listen_addr,omitempty" default:":2345"`
-	DelveContinue bool   `yaml:"delve_continue" default:"false"`
+	ListenAddr    string `yaml:"listen_addr,omitempty" default:"127.0.0.1:2345"`
+	DelveContinue bool   `yaml:"delve_continue,omitempty" default:"false"`
 	Image         string `yaml:"image,omitempty" default:"alpine:latest"`
+	Arch          string `yaml:"arch,omitempty" default:"amd64"`
+}
+
+func (c Config) Addr() (host string, port int, err error) {
+	pieces := strings.Split(c.ListenAddr, ":")
+	if len(pieces) != 2 {
+		return host, port, fmt.Errorf("unable to parse addr from %q", c.ListenAddr)
+	}
+	host = pieces[0]
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	if port, err = strconv.Atoi(pieces[1]); err != nil {
+		return host, port, err
+	}
+	return host, port, err
 }
 
 func (c Config) MarshalYAML() (interface{}, error) {
@@ -74,6 +92,24 @@ func (c Config) ContainerSuggest(d prompt.Document) []prompt.Suggest {
 	}))
 }
 
+func (c Config) AttachToSuggest(d prompt.Document) []prompt.Suggest {
+	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
+		d, err := kubectl.GetDeployment(c.Namespace, c.Deployment)
+		if err != nil {
+			return nil, err
+		}
+		pod, err := kubectl.GetMostRecentRunningPodBySelectors(c.Namespace, d.Spec.Selector.MatchLabels)
+		if err != nil {
+			return nil, err
+		}
+		ps, err := kubectl.ExecPod(c.Namespace, pod, c.Container, []string{"ps", "-o", "comm"}).Replace("COMMAND", "").String()
+		if err != nil {
+			return nil, err
+		}
+		return strings.Split(strings.Trim(ps, "\n"), "\n"), nil
+	}))
+}
+
 func (c Config) LaunchVscodeSuggest(d prompt.Document) []prompt.Suggest {
 	return []prompt.Suggest{{Text: "true"}, {Text: "false"}}
 }
@@ -93,11 +129,15 @@ func (c Config) ImageSuggest(d prompt.Document) []prompt.Suggest {
 	return append(suggestions, prompt.Suggest{Text: defaultImage})
 }
 
+func (c Config) ArchSuggest(d prompt.Document) []prompt.Suggest {
+	return []prompt.Suggest{{Text: "amd64"}, {Text: "arm64"}}
+}
+
 func LoadConfig(path string) (Config, error) {
 	var c Config
 	if _, err := os.Stat(path); err != nil {
 		// needed due to panicking in ctrl+c binding (library limitation)
-		defer handleExit()
+		defer handlePromptExit()
 		// if the config path doesnt exist
 		// run configuration create with suggestions
 		gencon.New(
@@ -131,7 +171,7 @@ func promptExit(_ *prompt.Buffer) {
 	panic(Exit(0))
 }
 
-func handleExit() {
+func handlePromptExit() {
 	v := recover()
 	switch v.(type) {
 	case nil:

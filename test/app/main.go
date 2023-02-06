@@ -13,10 +13,12 @@ func main() {
 	flag.StringVar(&flagGreeting, "greeting", "HELLO", "sets the greeting message")
 	flag.Parse()
 
-	greeting := []byte(flagGreeting)
-
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write(greeting)
+		alt := r.URL.Query().Get("greeting")
+		if alt != "" {
+			flagGreeting = alt
+		}
+		_, _ = w.Write([]byte(flagGreeting))
 	})
 	log.Printf("listening on %v", flagAddress)
 	log.Fatal(http.ListenAndServe(flagAddress, handler))

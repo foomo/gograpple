@@ -13,6 +13,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Specifies should command output be displayed")
 	rootCmd.PersistentFlags().StringVarP(&flagPod, "pod", "p", "", "pod name (default most recent one)")
 	rootCmd.PersistentFlags().StringVarP(&flagContainer, "container", "c", "", "container name (default deployment name)")
+	rootCmd.PersistentFlags().BoolVarP(&flagDebug, "debug", "", false, "debug mode")
 	patchCmd.Flags().StringVar(&flagImage, "image", "alpine:latest", "image to be used for patching (default alpine:latest)")
 	patchCmd.Flags().StringArrayVarP(&flagMounts, "mount", "m", []string{}, "host path to be mounted (default none)")
 	patchCmd.Flags().BoolVar(&flagRollback, "rollback", false, "rollback deployment to a previous state")
@@ -41,6 +42,7 @@ var (
 	flagVscode     bool
 	flagContinue   bool
 	flagJSONLog    bool
+	flagDebug      bool
 )
 
 var (
@@ -59,7 +61,7 @@ var (
 			if err != nil {
 				return err
 			}
-			grapple, err = gograpple.NewGrapple(l, flagNamespace, args[0])
+			grapple, err = gograpple.NewGrapple(l, flagNamespace, args[0], flagDebug)
 			if err != nil {
 				return err
 			}

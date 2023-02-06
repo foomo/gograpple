@@ -10,7 +10,7 @@ import (
 const testNamespace = "test"
 
 func testGrapple(t *testing.T, deployment string) *Grapple {
-	g, err := NewGrapple(logrus.NewEntry(logrus.StandardLogger()), testNamespace, deployment)
+	g, err := NewGrapple(logrus.NewEntry(logrus.StandardLogger()), testNamespace, deployment, false)
 	if err != nil {
 		t.Fatal(err)
 	}

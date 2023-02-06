@@ -1,6 +1,7 @@
 FROM golang:alpine AS builder
-WORKDIR /build
+WORKDIR /
 COPY . .
+# RUN CGO_ENABLED=0 go build -gcflags "-N -l" -o /helloworld main.go
 RUN go build -o /helloworld main.go
 
 FROM alpine:latest
