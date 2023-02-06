@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"path"
 	"strings"
 
 	"github.com/bitfield/script"
@@ -15,8 +14,7 @@ import (
 
 const defaultImage = "alpine:latest"
 
-func LoadConfig(base string, c interface{}) error {
-	filePath := path.Join(base, "gograpple.yaml")
+func loadConfig(filePath string, c interface{}) error {
 	defer func() {
 		if err := saveConfig(filePath, c); err != nil {
 			fmt.Println(err)
@@ -56,6 +54,7 @@ func LoadConfig(base string, c interface{}) error {
 }
 
 func saveConfig(path string, c interface{}) error {
+	fmt.Printf("\nsaving %q", path)
 	data, err := yaml.Marshal(c)
 	if err != nil {
 		return err
@@ -63,21 +62,18 @@ func saveConfig(path string, c interface{}) error {
 	return ioutil.WriteFile(path, data, 0644)
 }
 
-type Exit int
-
 func promptExit(_ *prompt.Buffer) {
-	panic(Exit(0))
+	panic(0)
 }
 
 func handleConfigExit() {
 	v := recover()
 	switch v.(type) {
 	case nil:
-		return
-	case Exit:
 		fmt.Println("\nexiting")
 		vInt, _ := v.(int)
 		os.Exit(vInt)
+		return
 	default:
 		fmt.Printf("%+v", v)
 	}

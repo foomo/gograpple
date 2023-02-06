@@ -108,6 +108,6 @@ func (c PatchConfig) LaunchVscodeSuggest(d prompt.Document) []prompt.Suggest {
 
 func NewPatchConfig(baseDir string) (PatchConfig, error) {
 	c := PatchConfig{baseDir: baseDir}
-	err := LoadConfig(baseDir, &c)
+	err := loadConfig(path.Join(baseDir, "gograpple-patch.yaml"), &c)
 	return c, err
 }

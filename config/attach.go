@@ -114,6 +114,6 @@ func (c AttachConfig) ArchSuggest(d prompt.Document) []prompt.Suggest {
 
 func NewAttachConfig(baseDir string) (AttachConfig, error) {
 	c := AttachConfig{baseDir: baseDir}
-	err := LoadConfig(baseDir, &c)
+	err := loadConfig(path.Join(baseDir, "gograpple-attach.yaml"), &c)
 	return c, err
 }
