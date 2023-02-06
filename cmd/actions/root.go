@@ -23,6 +23,7 @@ func init() {
 	delveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
 	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "start delve server execution without waiting for client connection")
 	delveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
+	configCmd.Flags().BoolVar(&flagAttach, "attach", false, "debug with attach")
 	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd, configCmd)
 }
 

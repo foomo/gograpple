@@ -17,7 +17,6 @@ const (
 	defaultConfigMapDeploymentKey    = "deployment.json"
 	defaultConfigMapDeploymentSuffix = "-patch"
 	defaultTag                       = "latest"
-	defaultImage                     = "alpine:latest"
 	patchImageName                   = "patch-image"
 	defaultPatchChangeCause          = "gograpple patch"
 	changeCauseAnnotation            = "kubernetes.io/change-cause"

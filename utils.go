@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/foomo/gograpple/exec"
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v3"
 )
 
 func FindFreePort(host string) (int, error) {
@@ -130,14 +128,6 @@ func stringIsInSlice(a string, list []string) bool {
 		}
 	}
 	return false
-}
-
-func LoadYaml(path string, data interface{}) error {
-	bs, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	return yaml.Unmarshal(bs, data)
 }
 
 func GetPlatformInfo(platform string) (os, arch string, err error) {
