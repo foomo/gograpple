@@ -14,7 +14,6 @@ import (
 )
 
 type PatchConfig struct {
-	baseDir    string
 	SourcePath string `yaml:"source_path"`
 	Cluster    string `yaml:"cluster"`
 	Namespace  string `yaml:"namespace" depends:"Cluster"`
@@ -62,7 +61,7 @@ func (c PatchConfig) MarshalYAML() (interface{}, error) {
 
 func (c PatchConfig) SourcePathSuggest(d prompt.Document) []prompt.Suggest {
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return Find(c.baseDir, "-type", "f", "-name", "main.go")
+		return Find(".", "-type", "f", "-name", "main.go")
 	}))
 }
 
@@ -104,10 +103,4 @@ func (c PatchConfig) DelveContinueSuggest(d prompt.Document) []prompt.Suggest {
 
 func (c PatchConfig) LaunchVscodeSuggest(d prompt.Document) []prompt.Suggest {
 	return []prompt.Suggest{{Text: "true"}, {Text: "false"}}
-}
-
-func NewPatchConfig(baseDir string) (PatchConfig, error) {
-	c := PatchConfig{baseDir: baseDir}
-	err := loadConfig(path.Join(baseDir, "gograpple-patch.yaml"), &c)
-	return c, err
 }

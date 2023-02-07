@@ -9,38 +9,46 @@ import (
 	"github.com/bitfield/script"
 	"github.com/c-bata/go-prompt"
 	"github.com/runz0rd/gencon"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
 
+var log *logrus.Entry
+
+func init() {
+	log = logrus.NewEntry(logrus.StandardLogger())
+}
+
 const defaultImage = "alpine:latest"
 
-func loadConfig(filePath string, c interface{}) error {
-	defer func() {
-		if err := saveConfig(filePath, c); err != nil {
-			fmt.Println(err)
-		}
-		// needed due to panicking in ctrl+c binding (library limitation)
-		handleConfigExit()
-	}()
-	configLoaded := false
-	if _, err := os.Stat(filePath); err == nil {
-		if err := LoadYaml(filePath, c); err != nil {
-			// if the config path doesnt exist
-			return err
-		}
-		configLoaded = true
-	}
+func Init(filePath string, config interface{}) error {
+	defer handleConfigExit()
 	var opts []gencon.Option
-	if configLoaded {
-		// skip filled when loaded from file
-		opts = append(opts, gencon.OptionSkipFilled())
+	if filePath != "" {
+		defer func() {
+			if err := save(filePath, config); err != nil {
+				log.Error(err)
+			}
+		}()
+		configLoaded := false
+		if _, err := os.Stat(filePath); err == nil {
+			if err := LoadYaml(filePath, config); err != nil {
+				// if the config path doesnt exist
+				return err
+			}
+			configLoaded = true
+		}
+		if configLoaded {
+			// skip filled when loaded from file
+			opts = append(opts, gencon.OptionSkipFilled())
+		}
 	}
 	// run configuration create with suggestions
 	w, err := gencon.New(opts...)
 	if err != nil {
 		return err
 	}
-	w.Prompt(c,
+	return w.Prompt(config,
 		prompt.OptionShowCompletionAtStart(),
 		prompt.OptionPrefixTextColor(prompt.Fuchsia),
 		// since we have a file completer
@@ -50,11 +58,10 @@ func loadConfig(filePath string, c interface{}) error {
 			Key: prompt.ControlC,
 			Fn:  promptExit,
 		}))
-	return nil
 }
 
-func saveConfig(path string, c interface{}) error {
-	fmt.Printf("\nsaving %q", path)
+func save(path string, c interface{}) error {
+	log.Infof("saving %q", path)
 	data, err := yaml.Marshal(c)
 	if err != nil {
 		return err
@@ -62,17 +69,22 @@ func saveConfig(path string, c interface{}) error {
 	return ioutil.WriteFile(path, data, 0644)
 }
 
+type PromptExit int
+
 func promptExit(_ *prompt.Buffer) {
-	panic(0)
+	fmt.Println()
+	panic(PromptExit(0))
 }
 
 func handleConfigExit() {
 	v := recover()
 	switch v.(type) {
-	case nil:
-		fmt.Println("\nexiting")
+	case PromptExit:
+		log.Info("exiting")
 		vInt, _ := v.(int)
 		os.Exit(vInt)
+		return
+	case nil:
 		return
 	default:
 		fmt.Printf("%+v", v)

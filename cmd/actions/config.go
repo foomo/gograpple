@@ -1,6 +1,8 @@
 package actions
 
 import (
+	"path"
+
 	"github.com/foomo/gograpple"
 	"github.com/foomo/gograpple/config"
 	"github.com/foomo/gograpple/kubectl"
@@ -10,22 +12,28 @@ import (
 const commandNameConfig = "config"
 
 var (
-	flagAttach = false
-	configCmd  = &cobra.Command{
-		Use:   "config [DIR] [FLAGS]",
+	flagAttach  bool
+	flagSaveDir string
+	configCmd   = &cobra.Command{
+		Use:   "config [FLAGS]",
 		Short: "load/create config and run patch and delve",
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flagAttach {
-				return attachDebug(args[0])
+				return attachDebug(flagSaveDir)
 			}
-			return patchDebug(args[0])
+			return patchDebug(flagSaveDir)
 		},
 	}
 )
 
-func attachDebug(base string) error {
-	c, err := config.NewAttachConfig(base)
+func attachDebug(baseDir string) error {
+	fp := ""
+	if baseDir != "" {
+		fp = path.Join(baseDir, "gograpple-attach.yaml")
+	}
+	c := config.AttachConfig{}
+	err := config.Init(fp, &c)
 	if err != nil {
 		return err
 	}
@@ -43,8 +51,13 @@ func attachDebug(base string) error {
 	return g.Attach(c.Namespace, c.Deployment, c.Container, c.AttachTo, c.Arch, host, port)
 }
 
-func patchDebug(base string) error {
-	c, err := config.NewPatchConfig(base)
+func patchDebug(baseDir string) error {
+	fp := ""
+	if baseDir != "" {
+		fp = path.Join(baseDir, "gograpple-patch.yaml")
+	}
+	c := config.PatchConfig{}
+	err := config.Init(fp, &c)
 	if err != nil {
 		return err
 	}
