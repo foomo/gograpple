@@ -49,4 +49,4 @@ require (
 	sigs.k8s.io/structured-merge-diff/v4 v4.2.1 // indirect
 )
 
-replace github.com/c-bata/go-prompt v0.2.5 => github.com/runz0rd/go-prompt v0.2.51
+// replace github.com/c-bata/go-prompt v0.2.5 => github.com/runz0rd/go-prompt v0.2.51
