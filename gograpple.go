@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/foomo/gograpple/exec"
-	"github.com/sirupsen/logrus"
+	"github.com/foomo/gograpple/log"
 	v1 "k8s.io/api/apps/v1"
 )
 
@@ -25,22 +25,21 @@ const (
 )
 
 type Grapple struct {
-	l          *logrus.Entry
 	deployment v1.Deployment
 	kubeCmd    *exec.KubectlCmd
 	dockerCmd  *exec.DockerCmd
 	goCmd      *exec.GoCmd
-	debug      bool
 }
 
-func NewGrapple(l *logrus.Entry, namespace, deployment string, debug bool) (*Grapple, error) {
-	g := &Grapple{l: l, debug: debug}
+func NewGrapple(namespace, deployment string) (*Grapple, error) {
+	le := log.Entry("")
+	g := &Grapple{}
 	g.kubeCmd = exec.NewKubectlCommand()
 	g.dockerCmd = exec.NewDockerCommand()
 	g.goCmd = exec.NewGoCommand()
-	g.kubeCmd.Logger(l)
-	g.dockerCmd.Logger(l)
-	g.goCmd.Logger(l)
+	g.kubeCmd.Logger(le)
+	g.dockerCmd.Logger(le)
+	g.goCmd.Logger(le)
 	g.kubeCmd.Args("-n", namespace)
 
 	validateCtx := context.Background()

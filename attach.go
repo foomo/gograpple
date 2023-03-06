@@ -10,6 +10,7 @@ import (
 	"github.com/foomo/gograpple/kubectl"
 	"github.com/foomo/gograpple/log"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 func (g Grapple) Attach(namespace, deployment, container, bin, arch, host string, port int) error {
@@ -35,18 +36,9 @@ func (g Grapple) Attach(namespace, deployment, container, bin, arch, host string
 	if len(pids) != 1 {
 		return fmt.Errorf("found none or more than one process named %q", bin)
 	}
-	go attachDelveOnPod(namespace, pod, container, dlvDest, pids[0], host, port, g.debug)
+	go attachDelveOnPod(namespace, pod, container, dlvDest, pids[0], host, port)
 	// launchVSCode(context.Background(), g.l, "./test/app", "", port, 3)
 	return kubectl.PortForwardPod(namespace, pod, port)
-}
-
-func attachCmd(dlvPath, binPid, host string, port int, debug bool) []string {
-	cmd := []string{dlvPath, "--headless", "attach", binPid, "--api-version=2",
-		"--continue", "--accept-multiclient", fmt.Sprintf("--listen=%v:%v", host, port)}
-	if debug {
-		cmd = append(cmd, "--log", "--log-output=rpc,dap,debugger")
-	}
-	return cmd
 }
 
 func dapCmd(dlvPath string, port int, debug bool) []string {
@@ -58,8 +50,13 @@ func dapCmd(dlvPath string, port int, debug bool) []string {
 	return cmd
 }
 
-func attachDelveOnPod(namespace, pod, container, dlvPath, binPid, host string, port int, debug bool) error {
-	_, err := kubectl.ExecPod(namespace, pod, container, attachCmd(dlvPath, binPid, host, port, debug)).WithStdout(log.Writer("dlv")).Stdout()
+func attachDelveOnPod(namespace, pod, container, dlvPath, binPid, host string, port int) error {
+	cmd := []string{dlvPath, "--headless", "attach", binPid, "--api-version=2",
+		"--continue", "--accept-multiclient", fmt.Sprintf("--listen=%v:%v", host, port)}
+	if log.Logger().GetLevel() == logrus.DebugLevel {
+		cmd = append(cmd, "--log", "--log-output=rpc,dap,debugger")
+	}
+	_, err := kubectl.ExecPod(namespace, pod, container, cmd).WithStdout(log.Writer("dlv")).Stdout()
 	return err
 }
 

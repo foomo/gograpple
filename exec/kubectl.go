@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -69,7 +68,7 @@ func (c KubectlCmd) ExecShell(resource, path string) *Cmd {
 	return c.Args("exec", "-it", resource,
 		"--", "/bin/sh", "-c",
 		fmt.Sprintf("cd %v && /bin/sh", path),
-	).Stdin(os.Stdin).Stdout(os.Stdout).Stderr(os.Stdout)
+	)
 }
 
 func (c KubectlCmd) PatchDeployment(patch, deployment string) *Cmd {

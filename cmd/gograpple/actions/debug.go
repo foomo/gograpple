@@ -9,35 +9,53 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const commandNameConfig = "config"
-
 var (
-	flagAttach  bool
-	flagSaveDir string
-	configCmd   = &cobra.Command{
-		Use:   "config [FLAGS]",
-		Short: "load/create config and run patch and delve",
+	flagAttach     bool
+	flagConfigPath string
+	flagGenerate   bool
+	debugCmd       = &cobra.Command{
+		Use:   "debug [FLAGS]",
+		Short: "run patch and delve",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flagAttach {
-				return attachDebug(flagSaveDir)
+				return attachDebug(flagConfigPath)
 			}
-			return patchDebug(flagSaveDir)
+			return patchDebug(flagConfigPath)
 		},
 	}
 )
 
-func attachDebug(baseDir string) error {
-	fp := ""
-	if baseDir != "" {
-		fp = path.Join(baseDir, "gograpple-attach.yaml")
+// if filePath != "" {
+// 	defer func() {
+// 		if err := save(filePath, config); err != nil {
+// 			log.Error(err)
+// 		}
+// 	}()
+// 	configLoaded := false
+// 	if _, err := os.Stat(filePath); err == nil {
+// 		if err := LoadYaml(filePath, config); err != nil {
+// 			// if the config path doesnt exist
+// 			return err
+// 		}
+// 		configLoaded = true
+// 	}
+// 	if configLoaded {
+// 		// skip filled when loaded from file
+// 		opts = append(opts, gencon.OptionSkipFilled())
+// 	}
+// }
+
+func attachDebug(configPath string) error {
+	if configPath == "" {
+		fp = path.Join(configPath, "./gograpple-attach.yaml")
 	}
 	c := config.AttachConfig{}
-	err := config.Init(fp, &c)
+	err := config.Generate(&c)
 	if err != nil {
 		return err
 	}
-	g, err := gograpple.NewGrapple(newLogger(flagVerbose, flagJSONLog), c.Namespace, c.Deployment, flagDebug)
+	g, err := gograpple.NewGrapple(c.Namespace, c.Deployment)
 	if err != nil {
 		return err
 	}
@@ -61,7 +79,7 @@ func patchDebug(baseDir string) error {
 	if err != nil {
 		return err
 	}
-	g, err := gograpple.NewGrapple(newLogger(flagVerbose, flagJSONLog), c.Namespace, c.Deployment, flagDebug)
+	g, err := gograpple.NewGrapple(c.Namespace, c.Deployment)
 	if err != nil {
 		return err
 	}

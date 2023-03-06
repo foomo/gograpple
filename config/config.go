@@ -21,29 +21,9 @@ func init() {
 
 const defaultImage = "alpine:latest"
 
-func Init(filePath string, config interface{}) error {
+func Generate(config interface{}) error {
 	defer handleConfigExit()
 	var opts []gencon.Option
-	if filePath != "" {
-		defer func() {
-			if err := save(filePath, config); err != nil {
-				log.Error(err)
-			}
-		}()
-		configLoaded := false
-		if _, err := os.Stat(filePath); err == nil {
-			if err := LoadYaml(filePath, config); err != nil {
-				// if the config path doesnt exist
-				return err
-			}
-			configLoaded = true
-		}
-		if configLoaded {
-			// skip filled when loaded from file
-			opts = append(opts, gencon.OptionSkipFilled())
-		}
-	}
-	// run configuration create with suggestions
 	w, err := gencon.New(opts...)
 	if err != nil {
 		return err
@@ -60,7 +40,17 @@ func Init(filePath string, config interface{}) error {
 		}))
 }
 
-func save(path string, c interface{}) error {
+func Load(path string, c interface{}) error {
+	log.Infof("loading %q", path)
+	if _, err := os.Stat(filePath); err == nil {
+		if err := LoadYaml(filePath, config); err != nil {
+			// if the config path doesnt exist
+			return err
+		}
+	}
+}
+
+func Save(path string, c interface{}) error {
 	log.Infof("saving %q", path)
 	data, err := yaml.Marshal(c)
 	if err != nil {

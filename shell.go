@@ -3,6 +3,8 @@ package gograpple
 import (
 	"context"
 	"fmt"
+
+	"github.com/foomo/gograpple/log"
 )
 
 func (g Grapple) Shell(pod string) error {
@@ -13,13 +15,13 @@ func (g Grapple) Shell(pod string) error {
 	if err := g.kubeCmd.ValidatePod(context.Background(), g.deployment, &pod); err != nil {
 		return err
 	}
-	g.l.Infof("waiting for pod %v with %q", pod, conditionContainersReady)
+	log.Logger().Infof("waiting for pod %v with %q", pod, conditionContainersReady)
 	_, err := g.kubeCmd.WaitForPodState(pod, conditionContainersReady, defaultWaitTimeout).Run(ctx)
 	if err != nil {
 		return err
 	}
 
-	g.l.Infof("running interactive shell for patched deployment %v", g.deployment.Name)
+	log.Logger().Infof("running interactive shell for patched deployment %v", g.deployment.Name)
 	_, err = g.kubeCmd.ExecShell(fmt.Sprintf("pod/%v", pod), "/").Run(ctx)
 	return err
 }

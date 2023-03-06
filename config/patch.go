@@ -21,8 +21,8 @@ type PatchConfig struct {
 	Container  string `yaml:"container" depends:"Deployment"`
 	ListenAddr string `yaml:"listen_addr,omitempty" default:"127.0.0.1:2345"`
 
-	Image         string `yaml:"image,omitempty" default:"alpine:latest"`
-	DelveContinue bool   `yaml:"delve_continue,omitempty" default:"false"`
+	Image         string `yaml:"image" default:"alpine:latest"`
+	DelveContinue bool   `yaml:"delve_continue" default:"true"`
 	LaunchVscode  bool   `yaml:"launch_vscode" default:"false"`
 }
 
@@ -61,7 +61,8 @@ func (c PatchConfig) MarshalYAML() (interface{}, error) {
 
 func (c PatchConfig) SourcePathSuggest(d prompt.Document) []prompt.Suggest {
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return Find(".", "-type", "f", "-name", "main.go")
+		// todo search for .go files that contain "package main"
+		return Find(".", "-type", "f", "-name", "*.go")
 	}))
 }
 

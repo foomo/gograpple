@@ -6,10 +6,10 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/sirupsen/logrus"
+	"github.com/foomo/gograpple/log"
 )
 
-func RunWithInterrupt(l *logrus.Entry, callback func(ctx context.Context)) {
+func RunWithInterrupt(callback func(ctx context.Context)) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 	durReload := 3 * time.Second
@@ -19,16 +19,16 @@ func RunWithInterrupt(l *logrus.Entry, callback func(ctx context.Context)) {
 		go callback(ctx)
 		select {
 		case <-signalChan: // first signal
-			l.Info("-")
-			l.Infof("interrupt received, trigger one more within %v to terminate", durReload)
+			log.Logger().Info("-")
+			log.Logger().Infof("interrupt received, trigger one more within %v to terminate", durReload)
 			cancelCtx()
 			select {
 			case <-time.After(durReload): // reloads durReload after first signal
-				l.Info("-")
-				l.Info("reloading")
+				log.Logger().Info("-")
+				log.Logger().Info("reloading")
 			case <-signalChan: // second signal, hard exit
-				l.Info("-")
-				l.Info("terminating")
+				log.Logger().Info("-")
+				log.Logger().Info("terminating")
 				signal.Stop(signalChan)
 				// exit loop
 				return

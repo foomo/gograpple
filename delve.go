@@ -9,6 +9,7 @@ import (
 
 	"github.com/foomo/gograpple/delve"
 	"github.com/foomo/gograpple/exec"
+	"github.com/foomo/gograpple/log"
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,76 +42,73 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		return fmt.Errorf("couldnt find go.mod path for source %q", sourcePath)
 	}
 
-	RunWithInterrupt(g.l, func(ctx context.Context) {
-		g.l.Infof("waiting for deployment to get ready")
+	RunWithInterrupt(func(ctx context.Context) {
+		log.Logger().Infof("waiting for deployment to get ready")
 		_, err := g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run(ctx)
 		if err != nil {
-			g.l.Error(err)
+			log.Logger().Error(err)
 			return
 		}
 		// validate and get k8s resources for delve session
 		if err := g.kubeCmd.ValidatePod(context.Background(), g.deployment, &pod); err != nil {
-			g.l.Error(err)
+			log.Logger().Error(err)
 			return
 		}
 		if err := g.kubeCmd.ValidateContainer(g.deployment, &container); err != nil {
-			g.l.Error(err)
+			log.Logger().Error(err)
 			return
 		}
 
 		// run pre-start cleanup
-		clog := g.componentLog("cleanup")
-		clog.Info("running pre-start cleanup")
+		cl := log.Entry("cleanup")
+		cl.Info("running pre-start cleanup")
 		if err := g.cleanupPIDs(ctx, pod, container); err != nil {
-			clog.Error(err)
+			cl.Error(err)
 			return
 		}
 
 		// deploy bin
-		dlog := g.componentLog("deploy")
-		dlog.Info("building and deploying bin")
+		dl := log.Entry("deploy")
+		dl.Info("building and deploying bin")
 		// get image used in the deployment so we can get platform
 		deploymentImage, err := g.kubeCmd.GetImage(ctx, g.deployment, container)
 		if err != nil {
-			dlog.Error(err)
+			dl.Error(err)
 			return
 		}
 		// get platform from deployment image
 		deploymentPlatform, err := g.dockerCmd.GetPlatform(ctx, deploymentImage)
 		if err != nil {
-			dlog.Error(err)
+			dl.Error(err)
 			return
 		}
 		if err := g.deployBin(ctx, pod, container, goModPath, sourcePath, deploymentPlatform); err != nil {
-			dlog.Error(err)
+			dl.Error(err)
 			return
 		}
 		// start delve server
-		dslog := g.componentLog("server")
-		dslog.Infof("starting delve server on %v:%v", host, port)
-		ds := delve.NewKubeDelveServer(dslog, g.deployment.Namespace, host, port)
+		dsl := log.Entry("server")
+		dsl.Infof("starting delve server on %v:%v", host, port)
+		ds := delve.NewKubeDelveServer(dsl, g.deployment.Namespace, host, port)
 		ds.StartNoWait(ctx, pod, container, g.binDestination(), binArgs, delveContinue)
 		// port forward to pod with delve server
-		dclog := g.componentLog("client")
-		g.portForwardDelve(dclog, ctx, pod, host, port)
+		dcl := log.Entry("client")
+		g.portForwardDelve(dcl, ctx, pod, host, port)
 		// check server state with delve client
-		if err := g.checkDelveConnection(dclog, ctx, 10, host, port); err != nil {
-			dclog.WithError(err).Error("couldnt connect to delver server")
+		if err := g.checkDelveConnection(dcl, ctx, 10, host, port); err != nil {
+			dcl.WithError(err).Error("couldnt connect to delver server")
 			return
 		}
 		// launch vscode
 		if vscode {
-			vlog := g.componentLog("vscode")
-			if err := launchVSCode(ctx, vlog, goModPath, host, port, 5); err != nil {
-				vlog.WithError(err).Error("couldnt launch vscode")
+			vl := log.Entry("vscode")
+			if err := launchVSCode(ctx, vl, goModPath, host, port, 5); err != nil {
+				vl.WithError(err).Error("couldnt launch vscode")
 			}
 		}
 	})
 	defer g.cleanupPIDs(context.Background(), pod, container)
 	return nil
-}
-func (g Grapple) componentLog(name string) *logrus.Entry {
-	return g.l.WithField("component", name)
 }
 
 func (g Grapple) binName() string {
@@ -158,8 +156,7 @@ func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourc
 
 func (g Grapple) portForwardDelve(l *logrus.Entry, ctx context.Context, pod, host string, port int) {
 	l.Info("port-forwarding pod for delve server")
-	cmd := g.kubeCmd.PortForwardPod(pod, host, port)
-	cmd.Stdout(os.Stdout)
+	cmd := g.kubeCmd.PortForwardPod(pod, host, port).Logger(l)
 	go func() {
 		_, err := cmd.Run(ctx)
 		if err != nil && err.Error() != "signal: killed" {

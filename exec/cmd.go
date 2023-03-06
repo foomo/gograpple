@@ -17,15 +17,14 @@ type Cmd struct {
 	cwd           string
 	env           []string
 	stdin         io.Reader
-	stdoutWriters []io.Writer
-	stderrWriters []io.Writer
+	stdoutWriter  io.Writer
+	stderrWriter  io.Writer
 	wait          bool
 	preStartFunc  func() error
 	postStartFunc func(p *os.Process) error
 	postEndFunc   func() error
 	chanStarted   chan struct{}
 	chanDone      chan struct{}
-	quiet         bool
 }
 
 func NewCommand(name string) *Cmd {
@@ -75,7 +74,7 @@ func (c *Cmd) Stdout(w io.Writer) *Cmd {
 	if w == nil {
 		w, _ = os.Open(os.DevNull)
 	}
-	c.stdoutWriters = append(c.stdoutWriters, w)
+	c.stdoutWriter = w
 	return c
 }
 
@@ -83,7 +82,7 @@ func (c *Cmd) Stderr(w io.Writer) *Cmd {
 	if w == nil {
 		w, _ = os.Open(os.DevNull)
 	}
-	c.stderrWriters = append(c.stderrWriters, w)
+	c.stderrWriter = w
 	return c
 }
 
@@ -112,11 +111,6 @@ func (c *Cmd) Logger(l *logrus.Entry) *Cmd {
 	return c
 }
 
-func (c *Cmd) Quiet() *Cmd {
-	c.quiet = true
-	return c
-}
-
 func (c *Cmd) Run(ctx context.Context) (string, error) {
 	return c.run(goexec.CommandContext(ctx, c.command[0], c.command[1:]...))
 }
@@ -136,19 +130,25 @@ func (c *Cmd) run(cmd *goexec.Cmd) (string, error) {
 	}
 
 	combinedBuf := new(bytes.Buffer)
-	c.stdoutWriters = append(c.stdoutWriters, combinedBuf)
-	c.stderrWriters = append(c.stderrWriters, combinedBuf)
+	stdoutWriters := []io.Writer{combinedBuf}
+	stderrWriters := []io.Writer{combinedBuf}
+	if c.stdoutWriter != nil {
+		stdoutWriters = append(stdoutWriters, c.stdoutWriter)
+	}
+	if c.stdoutWriter != nil {
+		stderrWriters = append(stderrWriters, c.stdoutWriter)
+	}
 	if c.l != nil {
-		c.l.Tracef("executing %q in %q", cmd.String(), cmd.Dir)
-		c.stdoutWriters = append(c.stdoutWriters, c.l.WriterLevel(logrus.TraceLevel))
-		if c.quiet {
-			c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.TraceLevel))
-		} else {
-			c.stderrWriters = append(c.stderrWriters, c.l.WriterLevel(logrus.WarnLevel))
+		c.l.Debugf("executing %q in %q", cmd.String(), cmd.Dir)
+		if c.stdoutWriter == nil {
+			stdoutWriters = append(stdoutWriters, c.l.WriterLevel(logrus.DebugLevel))
+		}
+		if c.stderrWriter == nil {
+			stderrWriters = append(stderrWriters, c.l.WriterLevel(logrus.DebugLevel))
 		}
 	}
-	cmd.Stdout = io.MultiWriter(c.stdoutWriters...)
-	cmd.Stderr = io.MultiWriter(c.stderrWriters...)
+	cmd.Stdout = io.MultiWriter(stdoutWriters...)
+	cmd.Stderr = io.MultiWriter(stderrWriters...)
 
 	if c.preStartFunc != nil {
 		if err := c.preStartFunc(); err != nil {
