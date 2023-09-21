@@ -60,7 +60,7 @@ func (c AttachConfig) MarshalYAML() (interface{}, error) {
 
 func (c AttachConfig) SourcePathSuggest(d prompt.Document) []prompt.Suggest {
 	return suggest.Completer(d, suggest.MustList(func() ([]string, error) {
-		return Find(".", "-type", "f", "-name", "main.go")
+		return find(".", "-type", "f", "-name", "main.go")
 	}))
 }
 

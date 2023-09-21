@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strings"
 
@@ -21,18 +20,14 @@ func init() {
 
 const defaultImage = "alpine:latest"
 
-func Init(filePath string, config interface{}) error {
+// load the already existing config or enter interactive mode to generate one
+func Interact(filePath string, config interface{}) error {
 	defer handleConfigExit()
 	var opts []gencon.Option
 	if filePath != "" {
-		defer func() {
-			if err := save(filePath, config); err != nil {
-				log.Error(err)
-			}
-		}()
 		configLoaded := false
 		if _, err := os.Stat(filePath); err == nil {
-			if err := LoadYaml(filePath, config); err != nil {
+			if err := loadYaml(filePath, config); err != nil {
 				// if the config path doesnt exist
 				return err
 			}
@@ -48,7 +43,7 @@ func Init(filePath string, config interface{}) error {
 	if err != nil {
 		return err
 	}
-	return w.Prompt(config,
+	if err := w.Prompt(config,
 		prompt.OptionShowCompletionAtStart(),
 		prompt.OptionPrefixTextColor(prompt.Fuchsia),
 		// since we have a file completer
@@ -57,7 +52,10 @@ func Init(filePath string, config interface{}) error {
 		prompt.OptionAddKeyBind(prompt.KeyBind{
 			Key: prompt.ControlC,
 			Fn:  promptExit,
-		}))
+		})); err != nil {
+		return err
+	}
+	return save(filePath, config)
 }
 
 func save(path string, c interface{}) error {
@@ -66,7 +64,7 @@ func save(path string, c interface{}) error {
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0644)
 }
 
 type PromptExit int
@@ -91,14 +89,14 @@ func handleConfigExit() {
 	}
 }
 
-func LoadYaml(path string, data interface{}) error {
-	bs, err := ioutil.ReadFile(path)
+func loadYaml(path string, data interface{}) error {
+	bs, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
 	return yaml.Unmarshal(bs, data)
 }
 
-func Find(args ...string) ([]string, error) {
+func find(args ...string) ([]string, error) {
 	return script.Exec(fmt.Sprintf("find %v", strings.Join(args, " "))).Slice()
 }
