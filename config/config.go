@@ -100,3 +100,7 @@ func loadYaml(path string, data interface{}) error {
 func find(args ...string) ([]string, error) {
 	return script.Exec(fmt.Sprintf("find %v", strings.Join(args, " "))).Slice()
 }
+
+func findContaining(v string, args ...string) ([]string, error) {
+	return script.Exec(fmt.Sprintf("find %v -exec grep -lr %q {} +", strings.Join(args, " "), v)).Slice()
+}
