@@ -22,7 +22,7 @@ type PatchConfig struct {
 	ListenAddr string `yaml:"listen_addr,omitempty" default:"127.0.0.1:2345"`
 
 	Image         string `yaml:"image,omitempty" default:"alpine:latest"`
-	DelveContinue bool   `yaml:"delve_continue,omitempty" default:"false"`
+	DelveContinue bool   `yaml:"delve_continue" default:"false"`
 	LaunchVscode  bool   `yaml:"launch_vscode" default:"false"`
 }
 
