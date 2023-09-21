@@ -109,9 +109,14 @@ func (g Grapple) Patch(image, container string, mounts []Mount) error {
 		return err
 	}
 	// get repo from deployment image
-	imageRepo, _, _, err := ParseImage(deploymentImage)
+	imageRepo, name, tag, err := ParseImage(deploymentImage)
 	if err != nil {
 		return err
+	}
+	// pull image so its available for inspect and build
+	g.l.Infof("pulling source image %v:%v", path.Join(imageRepo, name), tag)
+	if out, err := g.dockerCmd.Pull(path.Join(imageRepo, name), tag).Run(ctx); err != nil {
+		return errors.WithMessage(err, out)
 	}
 	// get platform from deployment image
 	deploymentPlatform, err := g.dockerCmd.GetPlatform(ctx, deploymentImage)
@@ -121,10 +126,9 @@ func (g Grapple) Patch(image, container string, mounts []Mount) error {
 
 	pathedImageName := g.patchedImageName(imageRepo)
 	g.l.Infof("building patch image %v:%v", pathedImageName, defaultTag)
-	out, err := g.dockerCmd.Build(theHookPath, "--build-arg",
+	if out, err := g.dockerCmd.Build(theHookPath, "--build-arg",
 		fmt.Sprintf("IMAGE=%v", image), "-t", fmt.Sprintf("%v:%v", pathedImageName, defaultTag),
-		"--platform", deploymentPlatform.String()).Quiet().Run(ctx)
-	if err != nil {
+		"--platform", deploymentPlatform.String()).Quiet().Run(ctx); err != nil {
 		return errors.WithMessage(err, out)
 	}
 

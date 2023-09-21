@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -55,7 +55,7 @@ func launchVSCode(ctx context.Context, l *logrus.Entry, goModDir, host string, p
 	openFile := goModDir
 	workspaceFolder := "${workspaceFolder}"
 	// is there a workspace in that dir
-	files, errReadDir := ioutil.ReadDir(goModDir)
+	files, errReadDir := os.ReadDir(goModDir)
 	if errReadDir == nil {
 		for _, file := range files {
 			if !file.IsDir() && strings.HasSuffix(file.Name(), ".code-workspace") {

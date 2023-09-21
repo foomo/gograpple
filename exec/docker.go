@@ -22,6 +22,10 @@ func (c DockerCmd) Push(image, tag string, options ...string) *Cmd {
 	return c.Args("push", fmt.Sprintf("%v:%v", image, tag)).Args(options...)
 }
 
+func (c DockerCmd) Pull(image, tag string, options ...string) *Cmd {
+	return c.Args("pull", fmt.Sprintf("%v:%v", image, tag)).Args(options...)
+}
+
 func (c DockerCmd) ImageInspect(options ...string) *Cmd {
 	return c.Args("image", "inspect").Args(options...)
 }

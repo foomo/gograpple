@@ -90,6 +90,7 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		dslog.Infof("starting delve server on %v:%v", host, port)
 		ds := delve.NewKubeDelveServer(dslog, g.deployment.Namespace, host, port)
 		ds.StartNoWait(ctx, pod, container, g.binDestination(), binArgs, delveContinue)
+		dslog.Info("application logs are redirected to your container")
 		// port forward to pod with delve server
 		dclog := g.componentLog("client")
 		g.portForwardDelve(dclog, ctx, pod, host, port)
@@ -159,7 +160,6 @@ func (g Grapple) deployBin(ctx context.Context, pod, container, goModPath, sourc
 func (g Grapple) portForwardDelve(l *logrus.Entry, ctx context.Context, pod, host string, port int) {
 	l.Info("port-forwarding pod for delve server")
 	cmd := g.kubeCmd.PortForwardPod(pod, host, port)
-	cmd.Stdout(os.Stdout)
 	go func() {
 		_, err := cmd.Run(ctx)
 		if err != nil && err.Error() != "signal: killed" {

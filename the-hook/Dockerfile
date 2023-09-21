@@ -7,4 +7,4 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go install -ldflags "-s -w -
 
 FROM $IMAGE
 COPY --from=build /go/bin/dlv /bin/dlv
-ENTRYPOINT ["/bin/sh", "-c", "while true; do echo go-grapple-go!; sleep 3600; done"]
+ENTRYPOINT ["/bin/sh", "-c", "while true; do printf '%s %s\n' \"$(date -u)\" \"handling gograpple debug session\"; sleep 36000; done"]

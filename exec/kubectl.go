@@ -253,7 +253,7 @@ func (_ KubectlCmd) GetContainerFromDeployment(container string, d *apps.Deploym
 }
 
 func (c KubectlCmd) GetPIDsOf(ctx context.Context, pod, container, process string) (pids []string, err error) {
-	rawPids, errExec := c.ExecPod(pod, container, []string{"pidof", process}).Run(ctx)
+	rawPids, errExec := c.ExecPod(pod, container, []string{"pidof", process}).Quiet().Run(ctx)
 	if errExec != nil {
 		if errExec.Error() == "exit status 1" {
 			return []string{}, nil
