@@ -23,9 +23,9 @@ func init() {
 	delveCmd.Flags().BoolVar(&flagVscode, "vscode", false, "launch a debug configuration in vscode")
 	delveCmd.Flags().BoolVar(&flagContinue, "continue", false, "start delve server execution without waiting for client connection")
 	delveCmd.Flags().BoolVar(&flagJSONLog, "json-log", false, "log as json")
-	configCmd.Flags().BoolVar(&flagAttach, "attach", false, "debug with attach")
-	configCmd.Flags().StringVar(&flagSaveDir, "save", ".", "save debug config dir")
-	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd, configCmd)
+	interactiveCmd.Flags().BoolVar(&flagAttach, "attach", false, "debug with attach (default will patch)")
+	interactiveCmd.Flags().StringVar(&flagSaveDir, "save", ".", "directory to save interactive configuration")
+	rootCmd.AddCommand(versionCmd, patchCmd, shellCmd, delveCmd, interactiveCmd)
 }
 
 var (
@@ -54,7 +54,7 @@ var (
 	rootCmd = &cobra.Command{
 		Use: "gograpple",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			if cmd.Name() == commandNameVersion || cmd.Name() == commandNameConfig {
+			if cmd.Name() == commandNameVersion || cmd.Name() == commandNameInteractive {
 				return nil
 			}
 			l = newLogger(flagVerbose, flagJSONLog)

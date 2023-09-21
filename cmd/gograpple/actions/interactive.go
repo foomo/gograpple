@@ -9,14 +9,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const commandNameConfig = "config"
+const commandNameInteractive = "interactive"
 
 var (
-	flagAttach  bool
-	flagSaveDir string
-	configCmd   = &cobra.Command{
-		Use:   "config [FLAGS]",
-		Short: "load/create config and run patch and delve",
+	flagAttach     bool
+	flagSaveDir    string
+	interactiveCmd = &cobra.Command{
+		Use:   "interactive",
+		Short: "setup and run patch or attach interactively",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if flagAttach {
@@ -32,8 +32,8 @@ func attachDebug(baseDir string) error {
 	if baseDir != "" {
 		fp = path.Join(baseDir, "gograpple-attach.yaml")
 	}
-	c := config.AttachConfig{}
-	err := config.Init(fp, &c)
+	var c config.AttachConfig
+	err := config.Interact(fp, &c)
 	if err != nil {
 		return err
 	}
@@ -56,10 +56,13 @@ func patchDebug(baseDir string) error {
 	if baseDir != "" {
 		fp = path.Join(baseDir, "gograpple-patch.yaml")
 	}
-	c := config.PatchConfig{}
-	err := config.Init(fp, &c)
+	var c config.PatchConfig
+	err := config.Interact(fp, &c)
 	if err != nil {
 		return err
+	}
+	if &c == nil {
+		return nil
 	}
 	g, err := gograpple.NewGrapple(newLogger(flagVerbose, flagJSONLog), c.Namespace, c.Deployment, flagDebug)
 	if err != nil {
