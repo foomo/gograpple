@@ -1,4 +1,4 @@
-package gograpple
+package grapple
 
 import (
 	"net"
@@ -10,7 +10,7 @@ import (
 const testNamespace = "test"
 
 func testGrapple(t *testing.T, deployment string) *Grapple {
-	g, err := NewGrapple(logrus.NewEntry(logrus.StandardLogger()), testNamespace, deployment, false)
+	g, err := NewGrapple(logrus.NewEntry(logrus.StandardLogger()), testNamespace, deployment)
 	if err != nil {
 		t.Fatal(err)
 	}

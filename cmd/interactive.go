@@ -1,15 +1,19 @@
-package actions
+package cmd
 
 import (
 	"path"
 
-	"github.com/foomo/gograpple"
-	"github.com/foomo/gograpple/config"
-	"github.com/foomo/gograpple/kubectl"
+	"github.com/foomo/gograpple/internal/config"
+	"github.com/foomo/gograpple/internal/grapple"
+	"github.com/foomo/gograpple/internal/kubectl"
 	"github.com/spf13/cobra"
 )
 
-const commandNameInteractive = "interactive"
+func init() {
+	interactiveCmd.Flags().BoolVar(&flagAttach, "attach", false, "debug with attach (default will patch)")
+	interactiveCmd.Flags().StringVar(&flagSaveDir, "save", ".", "directory to save interactive configuration")
+	rootCmd.AddCommand(interactiveCmd)
+}
 
 var (
 	flagAttach     bool
@@ -37,7 +41,7 @@ func attachDebug(baseDir string) error {
 	if err != nil {
 		return err
 	}
-	g, err := gograpple.NewGrapple(newLogger(flagVerbose, flagJSONLog), c.Namespace, c.Deployment, flagDebug)
+	g, err := grapple.NewGrapple(newLogEntry(flagDebug), c.Namespace, c.Deployment)
 	if err != nil {
 		return err
 	}
@@ -48,7 +52,7 @@ func attachDebug(baseDir string) error {
 	if err := kubectl.SetContext(c.Cluster); err != nil {
 		return err
 	}
-	return g.Attach(c.Namespace, c.Deployment, c.Container, c.AttachTo, c.Arch, host, port)
+	return g.Attach(c.Namespace, c.Deployment, c.Container, c.AttachTo, c.Arch, host, port, flagDebug)
 }
 
 func patchDebug(baseDir string) error {
@@ -64,7 +68,7 @@ func patchDebug(baseDir string) error {
 	if &c == nil {
 		return nil
 	}
-	g, err := gograpple.NewGrapple(newLogger(flagVerbose, flagJSONLog), c.Namespace, c.Deployment, flagDebug)
+	g, err := grapple.NewGrapple(newLogEntry(flagDebug), c.Namespace, c.Deployment)
 	if err != nil {
 		return err
 	}

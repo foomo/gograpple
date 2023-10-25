@@ -1,4 +1,4 @@
-package gograpple
+package grapple
 
 import (
 	"context"
@@ -10,7 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/foomo/gograpple/exec"
+	"github.com/foomo/gograpple/internal/exec"
+	"github.com/foomo/gograpple/util"
 	"github.com/sirupsen/logrus"
 )
 
@@ -79,7 +80,7 @@ func launchVSCode(ctx context.Context, l *logrus.Entry, goModDir, host string, p
 	if err != nil {
 		return err
 	}
-	_, err = Open(l, ctx, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+url.QueryEscape(la))
+	_, err = util.Open(l, ctx, `vscode://fabiospampinato.vscode-debug-launcher/launch?args=`+url.QueryEscape(la))
 	if err != nil {
 		return err
 	}

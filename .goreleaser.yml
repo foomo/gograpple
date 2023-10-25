@@ -2,11 +2,11 @@
 # Build customization
 builds:
   - binary: gograpple
-    main:   ./cmd/main.go
+    main:   ./main.go
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -s -w -X github.com/foomo/gograpple/cmd/actions.version={{.Version}}
+      - -s -w -X github.com/foomo/gograpple/cmd.version={{.Version}}
     goos:
       - darwin
       - linux

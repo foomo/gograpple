@@ -1,9 +1,9 @@
-package gograpple
+package grapple
 
 import (
 	"context"
 
-	"github.com/foomo/gograpple/exec"
+	"github.com/foomo/gograpple/internal/exec"
 	"github.com/sirupsen/logrus"
 	v1 "k8s.io/api/apps/v1"
 )
@@ -30,11 +30,10 @@ type Grapple struct {
 	kubeCmd    *exec.KubectlCmd
 	dockerCmd  *exec.DockerCmd
 	goCmd      *exec.GoCmd
-	debug      bool
 }
 
-func NewGrapple(l *logrus.Entry, namespace, deployment string, debug bool) (*Grapple, error) {
-	g := &Grapple{l: l, debug: debug}
+func NewGrapple(l *logrus.Entry, namespace, deployment string) (*Grapple, error) {
+	g := &Grapple{l: l}
 	g.kubeCmd = exec.NewKubectlCommand()
 	g.dockerCmd = exec.NewDockerCommand()
 	g.goCmd = exec.NewGoCommand()

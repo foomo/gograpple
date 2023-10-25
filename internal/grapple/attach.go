@@ -1,4 +1,4 @@
-package gograpple
+package grapple
 
 import (
 	"fmt"
@@ -7,12 +7,12 @@ import (
 	"runtime"
 
 	"github.com/bitfield/script"
-	"github.com/foomo/gograpple/kubectl"
-	"github.com/foomo/gograpple/log"
+	"github.com/foomo/gograpple/internal/kubectl"
+	"github.com/foomo/gograpple/internal/log"
 	"github.com/pkg/errors"
 )
 
-func (g Grapple) Attach(namespace, deployment, container, bin, arch, host string, port int) error {
+func (g Grapple) Attach(namespace, deployment, container, bin, arch, host string, port int, debug bool) error {
 	pod, err := kubectl.GetMostRecentRunningPodBySelectors(namespace, g.deployment.Spec.Selector.MatchLabels)
 	if err != nil {
 		return err
@@ -35,7 +35,7 @@ func (g Grapple) Attach(namespace, deployment, container, bin, arch, host string
 	if len(pids) != 1 {
 		return fmt.Errorf("found none or more than one process named %q", bin)
 	}
-	go attachDelveOnPod(namespace, pod, container, dlvDest, pids[0], host, port, g.debug)
+	go attachDelveOnPod(namespace, pod, container, dlvDest, pids[0], host, port, debug)
 	// launchVSCode(context.Background(), g.l, "./test/app", "", port, 3)
 	return kubectl.PortForwardPod(namespace, pod, port)
 }

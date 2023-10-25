@@ -1,11 +1,11 @@
-package actions
+package cmd
 
 import (
 	"fmt"
 	"strconv"
 	"strings"
 
-	"github.com/foomo/gograpple"
+	"github.com/foomo/gograpple/internal/grapple"
 )
 
 type HostPort struct {
@@ -14,7 +14,7 @@ type HostPort struct {
 }
 
 func NewHostPort(host string, port int) *HostPort {
-	addr, err := gograpple.CheckTCPConnection(host, port)
+	addr, err := grapple.CheckTCPConnection(host, port)
 	if err == nil {
 		host = addr.IP.String()
 		port = addr.Port
@@ -45,7 +45,7 @@ func (lf *HostPort) Set(value string) error {
 	default:
 		return fmt.Errorf("invalid address %q provided", value)
 	}
-	addr, err := gograpple.CheckTCPConnection(lf.Host, lf.Port)
+	addr, err := grapple.CheckTCPConnection(lf.Host, lf.Port)
 	if err != nil {
 		return err
 	}

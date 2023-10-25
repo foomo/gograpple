@@ -1,4 +1,4 @@
-package gograpple
+package grapple
 
 import (
 	"context"

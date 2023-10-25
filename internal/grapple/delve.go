@@ -1,4 +1,4 @@
-package gograpple
+package grapple
 
 import (
 	"context"
@@ -7,8 +7,9 @@ import (
 	"path"
 	"time"
 
-	"github.com/foomo/gograpple/delve"
-	"github.com/foomo/gograpple/exec"
+	"github.com/foomo/gograpple/internal/delve"
+	"github.com/foomo/gograpple/internal/exec"
+	"github.com/foomo/gograpple/util"
 	"github.com/sirupsen/logrus"
 )
 
@@ -41,7 +42,7 @@ func (g Grapple) Delve(pod, container, sourcePath string, binArgs []string, host
 		return fmt.Errorf("couldnt find go.mod path for source %q", sourcePath)
 	}
 
-	RunWithInterrupt(g.l, func(ctx context.Context) {
+	util.RunWithInterrupt(g.l, func(ctx context.Context) {
 		g.l.Infof("waiting for deployment to get ready")
 		_, err := g.kubeCmd.WaitForRollout(g.deployment.Name, defaultWaitTimeout).Run(ctx)
 		if err != nil {

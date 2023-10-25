@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/bitfield/script"
-	"github.com/foomo/gograpple/log"
-	"github.com/foomo/gograpple/suggest"
+	"github.com/foomo/gograpple/internal/log"
+	"github.com/foomo/gograpple/internal/suggest"
 	"github.com/life4/genesis/slices"
 	"github.com/pkg/errors"
 	apps "k8s.io/api/apps/v1"

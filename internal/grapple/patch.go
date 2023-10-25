@@ -1,4 +1,4 @@
-package gograpple
+package grapple
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/foomo/gograpple/util"
 	"github.com/pkg/errors"
 )
 
@@ -109,7 +110,7 @@ func (g Grapple) Patch(image, container string, mounts []Mount) error {
 		return err
 	}
 	// get repo from deployment image
-	imageRepo, name, tag, err := ParseImage(deploymentImage)
+	imageRepo, name, tag, err := util.ParseImage(deploymentImage)
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-package gograpple
+package grapple
 
 import (
 	"bytes"
@@ -7,13 +7,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"text/template"
 	"time"
-
-	"github.com/foomo/gograpple/exec"
-	"github.com/sirupsen/logrus"
 )
 
 func FindFreePort(host string) (int, error) {
@@ -35,21 +30,6 @@ func CheckTCPConnection(host string, port int) (*net.TCPAddr, error) {
 	}
 	defer l.Close()
 	return l.Addr().(*net.TCPAddr), nil
-}
-
-func Open(l *logrus.Entry, ctx context.Context, path string) (string, error) {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "linux":
-		cmd = exec.NewCommand("xdg-open").Logger(l).Args(path)
-	case "windows":
-		cmd = exec.NewCommand("rundll32").Logger(l).Args("url.dll,FileProtocolHandler", path)
-	case "darwin":
-		cmd = exec.NewCommand("open").Logger(l).Args(path)
-	default:
-		return "", fmt.Errorf("unsupported platform")
-	}
-	return cmd.Run(ctx)
 }
 
 func TryCall(tries int, waitBetweenAttempts time.Duration, f func(i int) error) error {
@@ -128,25 +108,4 @@ func stringIsInSlice(a string, list []string) bool {
 		}
 	}
 	return false
-}
-
-func GetPlatformInfo(platform string) (os, arch string, err error) {
-	pieces := strings.Split(platform, "/")
-	if len(pieces) != 2 {
-		return os, arch, fmt.Errorf("invalid format for platform %q", platform)
-	}
-	return pieces[0], pieces[1], nil
-}
-
-func ParseImage(s string) (repo, name, tag string, err error) {
-	pieces := strings.Split(s, "/")
-	switch true {
-	case len(pieces) == 1 && pieces[0] == s:
-		imageTag := strings.Split(s, ":")
-		return "", imageTag[0], imageTag[1], nil
-	case len(pieces) > 1:
-		imageTag := strings.Split(pieces[len(pieces)-1], ":")
-		return strings.Join(pieces[:len(pieces)-1], "/"), imageTag[0], imageTag[1], nil
-	}
-	return "", "", "", fmt.Errorf("invalid image value %q provided", s)
 }

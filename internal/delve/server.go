@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/foomo/gograpple/exec"
+	"github.com/foomo/gograpple/internal/exec"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
 )
