@@ -68,15 +68,15 @@ func patchDebug(baseDir string) error {
 	if &c == nil {
 		return nil
 	}
+	if err := kubectl.SetContext(c.Cluster); err != nil {
+		return err
+	}
 	g, err := grapple.NewGrapple(newLogEntry(flagDebug), c.Namespace, c.Deployment)
 	if err != nil {
 		return err
 	}
 	host, port, err := c.Addr()
 	if err != nil {
-		return err
-	}
-	if err := kubectl.SetContext(c.Cluster); err != nil {
 		return err
 	}
 	if err := g.Patch(c.Image, c.Container, nil); err != nil {

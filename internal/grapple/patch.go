@@ -104,7 +104,7 @@ func (g Grapple) Patch(image, container string, mounts []Mount) error {
 		return err
 	}
 
-	// get image used in the deployment so we can and platform
+	// get image used in the deployment
 	deploymentImage, err := g.kubeCmd.GetImage(ctx, g.deployment, container)
 	if err != nil {
 		return err

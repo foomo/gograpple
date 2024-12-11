@@ -11,8 +11,8 @@ spec:
       - name: {{ .Container }}
         image: {{ .Image }}
         imagePullPolicy: Always
-        command:
-        args:
+        command: ~
+        args: ~
         livenessProbe: ~
         readinessProbe: ~
         startupProbe: ~
